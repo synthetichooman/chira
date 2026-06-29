@@ -201,10 +201,11 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     [self setupSettingsPanelIfNeeded];
     [self refreshSettingsPanelValues];
 
-    NSRect parentFrame = _panel.frame;
+    NSScreen *screen = _panel.screen ?: NSScreen.mainScreen;
+    NSRect visibleFrame = screen.visibleFrame;
     NSSize size = _settingsPanel.frame.size;
-    CGFloat x = NSMidX(parentFrame) - size.width / 2.0;
-    CGFloat y = NSMaxY(parentFrame) - size.height - 112;
+    CGFloat x = NSMidX(visibleFrame) - size.width / 2.0;
+    CGFloat y = NSMidY(visibleFrame) - size.height / 2.0;
     [_settingsPanel setFrame:NSMakeRect(x, y, size.width, size.height) display:YES];
     [NSApp activateIgnoringOtherApps:YES];
     [_settingsPanel makeKeyAndOrderFront:nil];

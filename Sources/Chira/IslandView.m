@@ -12,7 +12,7 @@ static const CGFloat ChiraClipboardTextHoverRowHeight = 58.0;
 static const CGFloat ChiraClipboardImageHoverRowHeight = 84.0;
 static const CGFloat ChiraHeaderTextHeight = 18.0;
 static const CGFloat ChiraHeaderButtonSize = 24.0;
-static const CGFloat ChiraHeaderIconTextBaselineOffset = 1.5;
+static const CGFloat ChiraHeaderIconTextBaselineOffset = -13.0;
 static const CGFloat ChiraClipboardRowTextHeight = 18.0;
 static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
 
@@ -668,7 +668,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                 fromRect:NSZeroRect
                operation:NSCompositingOperationSourceOver
                 fraction:1.0
-          respectFlipped:YES
+          respectFlipped:NO
                    hints:nil];
     }
 
