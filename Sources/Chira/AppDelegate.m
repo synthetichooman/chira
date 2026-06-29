@@ -122,6 +122,7 @@
 
     _islandView.notchWidth = notchWidth;
     _islandView.topSafeInset = hasNotchDeadZone ? safeInsets.top : 0;
+    _islandView.hasNotch = hasNotchDeadZone;
     [_islandView setNeedsDisplay:YES];
 
     CGFloat x = anchorX - size.width / 2.0;
@@ -129,8 +130,8 @@
     [_panel setFrame:NSMakeRect(x, y, size.width, size.height) display:YES];
 
     CGFloat hotPadding = 8;
-    CGFloat hotWidth = hasNotchDeadZone ? MAX(notchWidth + hotPadding * 2, 1) : 140;
-    CGFloat hotHeight = hasNotchDeadZone ? MAX(safeInsets.top + hotPadding, 1) : 24;
+    CGFloat hotWidth = hasNotchDeadZone ? MAX(notchWidth + hotPadding * 2, 1) : 180;
+    CGFloat hotHeight = hasNotchDeadZone ? MAX(safeInsets.top + hotPadding, 1) : 34;
     _notchHotZone = NSMakeRect(anchorX - hotWidth / 2.0, NSMaxY(screen.frame) - hotHeight, hotWidth, hotHeight);
 }
 

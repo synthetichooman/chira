@@ -1,6 +1,9 @@
 #import "IslandView.h"
 
 static const CGFloat ChiraMacBookPro14NotchWidth = 210.0;
+static const CGFloat ChiraFloatingHiddenWidth = 168.0;
+static const CGFloat ChiraFloatingHiddenHeight = 30.0;
+static const CGFloat ChiraFloatingTopMargin = 8.0;
 static const CGFloat ChiraIngestPulseHorizontalStretch = 12.0;
 static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
 
@@ -26,6 +29,7 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
     _modules = @[];
     _topSafeInset = 6;
     _notchWidth = 0;
+    _hasNotch = NO;
     _ingestPulse = 0;
     _pressedClipboardIndex = -1;
     _pressedClipboardInside = NO;
@@ -240,8 +244,8 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
 
 - (NSRect)currentIslandRect {
     CGFloat detectedNotchWidth = self.notchWidth > 0 ? self.notchWidth : ChiraMacBookPro14NotchWidth;
-    CGFloat hiddenWidth = MAX(ChiraMacBookPro14NotchWidth, detectedNotchWidth);
-    CGFloat hiddenHeight = self.topSafeInset > 0 ? MAX(1, self.topSafeInset - 2) : 4;
+    CGFloat hiddenWidth = self.hasNotch ? MAX(ChiraMacBookPro14NotchWidth, detectedNotchWidth) : ChiraFloatingHiddenWidth;
+    CGFloat hiddenHeight = self.hasNotch ? MAX(1, self.topSafeInset - 2) : ChiraFloatingHiddenHeight;
     CGFloat expandedWidth = 470;
     CGFloat expandedHeight = hiddenHeight + [self expandedContentHeight];
     CGFloat width = hiddenWidth + (expandedWidth - hiddenWidth) * _progress;
@@ -252,7 +256,8 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
     CGFloat pulseOffsetY = (ChiraIngestPulseVerticalDrop * hiddenBias + 4 * (1.0 - hiddenBias)) * _ingestPulse;
     width += pulseWidth;
 
-    return NSMakeRect((NSWidth(self.bounds) - width) / 2.0, pulseOffsetY, width, height);
+    CGFloat baseY = self.hasNotch ? 0 : ChiraFloatingTopMargin;
+    return NSMakeRect((NSWidth(self.bounds) - width) / 2.0, baseY + pulseOffsetY, width, height);
 }
 
 - (CGFloat)expandedContentHeight {
@@ -310,6 +315,15 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
     return path;
 }
 
+- (NSBezierPath *)islandShapeForRect:(NSRect)rect bottomRadius:(CGFloat)radius topShoulderRadius:(CGFloat)topShoulderRadius {
+    if (self.hasNotch) {
+        return [self topAttachedPathForRect:rect bottomRadius:radius topShoulderRadius:topShoulderRadius];
+    }
+
+    CGFloat floatingRadius = MIN(radius, NSHeight(rect) / 2.0);
+    return [NSBezierPath bezierPathWithRoundedRect:rect xRadius:floatingRadius yRadius:floatingRadius];
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
     [NSColor.clearColor setFill];
     NSRectFill(self.bounds);
@@ -319,8 +333,8 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
     NSRect islandRect = [self currentIslandRect];
     CGFloat visualProgress = MAX(_progress, _ingestPulse * 0.08);
     CGFloat radius = 18 + (30 - 18) * visualProgress;
-    CGFloat topShoulderRadius = 16 * visualProgress;
-    NSBezierPath *shape = [self topAttachedPathForRect:islandRect bottomRadius:radius topShoulderRadius:topShoulderRadius];
+    CGFloat topShoulderRadius = self.hasNotch ? 16 * visualProgress : 0;
+    NSBezierPath *shape = [self islandShapeForRect:islandRect bottomRadius:radius topShoulderRadius:topShoulderRadius];
 
     NSShadow *shadow = [NSShadow new];
     shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.34 * visualProgress];
@@ -334,9 +348,9 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
     [NSGraphicsContext restoreGraphicsState];
 
     [[NSColor colorWithWhite:1 alpha:0.08 * visualProgress] setStroke];
-    NSBezierPath *border = [self topAttachedPathForRect:NSInsetRect(islandRect, 0.5, 0.5)
-                                          bottomRadius:radius
-                                     topShoulderRadius:MAX(0, topShoulderRadius - 0.5)];
+    NSBezierPath *border = [self islandShapeForRect:NSInsetRect(islandRect, 0.5, 0.5)
+                                      bottomRadius:radius
+                                 topShoulderRadius:MAX(0, topShoulderRadius - 0.5)];
     border.lineWidth = 1;
     [border stroke];
 

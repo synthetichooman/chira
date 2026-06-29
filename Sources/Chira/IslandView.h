@@ -18,6 +18,7 @@
 @property (nonatomic, weak) id<IslandViewDelegate> delegate;
 @property (nonatomic) CGFloat topSafeInset;
 @property (nonatomic) CGFloat notchWidth;
+@property (nonatomic) BOOL hasNotch;
 
 - (void)setMode:(ChiraIslandMode)mode transientDuration:(NSTimeInterval)duration;
 - (void)playClipboardIngestPulse;
