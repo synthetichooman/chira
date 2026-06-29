@@ -114,7 +114,7 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     NSTextField *label = [NSTextField labelWithString:string];
     label.frame = frame;
     label.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
-    label.textColor = [NSColor colorWithWhite:0.82 alpha:1];
+    label.textColor = NSColor.secondaryLabelColor;
     return label;
 }
 
@@ -123,57 +123,54 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     label.frame = frame;
     label.font = [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightSemibold];
     label.alignment = NSTextAlignmentCenter;
-    label.textColor = NSColor.whiteColor;
+    label.textColor = NSColor.labelColor;
     return label;
 }
 
 - (void)setupSettingsPanelIfNeeded {
     if (_settingsPanel) return;
 
-    NSSize panelSize = NSMakeSize(270, 178);
+    NSSize panelSize = NSMakeSize(300, 178);
     _settingsPanel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
-                                                styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
+                                                styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                                                   backing:NSBackingStoreBuffered
                                                     defer:NO];
-    _settingsPanel.opaque = NO;
-    _settingsPanel.backgroundColor = NSColor.clearColor;
+    _settingsPanel.title = @"Chira Settings";
+    _settingsPanel.releasedWhenClosed = NO;
+    _settingsPanel.hidesOnDeactivate = NO;
+    _settingsPanel.opaque = YES;
+    _settingsPanel.backgroundColor = NSColor.windowBackgroundColor;
     _settingsPanel.hasShadow = YES;
     _settingsPanel.ignoresMouseEvents = NO;
-    _settingsPanel.movableByWindowBackground = YES;
-    _settingsPanel.level = CGWindowLevelForKey(kCGStatusWindowLevelKey);
+    _settingsPanel.movableByWindowBackground = NO;
+    _settingsPanel.level = NSFloatingWindowLevel;
     _settingsPanel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
         NSWindowCollectionBehaviorFullScreenAuxiliary |
         NSWindowCollectionBehaviorStationary;
 
     NSView *contentView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, panelSize.width, panelSize.height)];
     contentView.wantsLayer = YES;
-    contentView.layer.backgroundColor = [NSColor colorWithWhite:0.05 alpha:0.96].CGColor;
-    contentView.layer.cornerRadius = 14;
-    contentView.layer.borderWidth = 1;
-    contentView.layer.borderColor = [NSColor colorWithWhite:1 alpha:0.10].CGColor;
+    contentView.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor;
     _settingsPanel.contentView = contentView;
 
-    NSTextField *title = [NSTextField labelWithString:@"Settings"];
-    title.frame = NSMakeRect(18, 144, 160, 20);
+    NSTextField *title = [NSTextField labelWithString:@"Chira"];
+    title.frame = NSMakeRect(20, 140, 180, 22);
     title.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
-    title.textColor = NSColor.whiteColor;
+    title.textColor = NSColor.labelColor;
     [contentView addSubview:title];
 
-    NSButton *closeButton = [[NSButton alloc] initWithFrame:NSMakeRect(232, 140, 22, 22)];
-    closeButton.bezelStyle = NSBezelStyleTexturedRounded;
-    closeButton.bordered = NO;
-    closeButton.image = [NSImage imageWithSystemSymbolName:@"xmark.circle.fill" accessibilityDescription:@"Close"];
-    closeButton.imagePosition = NSImageOnly;
-    closeButton.target = self;
-    closeButton.action = @selector(closeSettingsPanel:);
-    [contentView addSubview:closeButton];
+    NSTextField *subtitle = [NSTextField labelWithString:@"Clipboard island settings"];
+    subtitle.frame = NSMakeRect(20, 121, 210, 18);
+    subtitle.font = [NSFont systemFontOfSize:12 weight:NSFontWeightRegular];
+    subtitle.textColor = NSColor.secondaryLabelColor;
+    [contentView addSubview:subtitle];
 
-    [contentView addSubview:[self settingsLabelWithString:@"Visible clipboard items" frame:NSMakeRect(18, 105, 160, 18)]];
+    [contentView addSubview:[self settingsLabelWithString:@"Visible clipboard items" frame:NSMakeRect(20, 88, 170, 18)]];
 
-    _settingsCountValueLabel = [self settingsValueLabelWithString:@"" frame:NSMakeRect(178, 103, 28, 22)];
+    _settingsCountValueLabel = [self settingsValueLabelWithString:@"" frame:NSMakeRect(202, 86, 28, 22)];
     [contentView addSubview:_settingsCountValueLabel];
 
-    _settingsCountStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(214, 98, 18, 28)];
+    _settingsCountStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(242, 82, 18, 28)];
     _settingsCountStepper.minValue = 1;
     _settingsCountStepper.maxValue = 8;
     _settingsCountStepper.increment = 1;
@@ -181,15 +178,15 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     _settingsCountStepper.action = @selector(settingsCountStepperChanged:);
     [contentView addSubview:_settingsCountStepper];
 
-    NSBox *divider = [[NSBox alloc] initWithFrame:NSMakeRect(18, 84, 234, 1)];
+    NSBox *divider = [[NSBox alloc] initWithFrame:NSMakeRect(20, 68, 260, 1)];
     divider.boxType = NSBoxCustom;
     divider.transparent = NO;
-    divider.fillColor = [NSColor colorWithWhite:1 alpha:0.10];
+    divider.fillColor = NSColor.separatorColor;
     [contentView addSubview:divider];
 
-    [contentView addSubview:[self settingsLabelWithString:@"Developer: kimminpyo" frame:NSMakeRect(18, 54, 220, 18)]];
+    [contentView addSubview:[self settingsLabelWithString:@"Developer: kimminpyo" frame:NSMakeRect(20, 40, 240, 18)]];
 
-    NSTextField *github = [self settingsLabelWithString:@"GitHub: synthetichooman/chira" frame:NSMakeRect(18, 30, 226, 18)];
+    NSTextField *github = [self settingsLabelWithString:@"GitHub: synthetichooman/chira" frame:NSMakeRect(20, 18, 250, 18)];
     github.selectable = YES;
     [contentView addSubview:github];
 }
@@ -209,7 +206,8 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     CGFloat x = NSMidX(parentFrame) - size.width / 2.0;
     CGFloat y = NSMaxY(parentFrame) - size.height - 112;
     [_settingsPanel setFrame:NSMakeRect(x, y, size.width, size.height) display:YES];
-    [_settingsPanel orderFrontRegardless];
+    [NSApp activateIgnoringOtherApps:YES];
+    [_settingsPanel makeKeyAndOrderFront:nil];
 }
 
 - (void)toggleSettingsPanel {

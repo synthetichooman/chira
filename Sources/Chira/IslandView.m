@@ -12,6 +12,7 @@ static const CGFloat ChiraClipboardTextHoverRowHeight = 58.0;
 static const CGFloat ChiraClipboardImageHoverRowHeight = 84.0;
 static const CGFloat ChiraHeaderTextHeight = 18.0;
 static const CGFloat ChiraHeaderButtonSize = 24.0;
+static const CGFloat ChiraHeaderIconTextBaselineOffset = 1.5;
 static const CGFloat ChiraClipboardRowTextHeight = 18.0;
 static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
 
@@ -307,7 +308,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     CGFloat horizontalPadding = 40;
     NSRect titleRect = [self headerTitleRectInIslandRect:rect horizontalPadding:horizontalPadding reservesSettings:YES];
     return NSMakeRect(NSMaxX(rect) - horizontalPadding - ChiraHeaderButtonSize,
-                      floor(NSMidY(titleRect) - ChiraHeaderButtonSize / 2.0),
+                      floor(NSMidY(titleRect) - ChiraHeaderButtonSize / 2.0 + ChiraHeaderIconTextBaselineOffset),
                       ChiraHeaderButtonSize,
                       ChiraHeaderButtonSize);
 }
