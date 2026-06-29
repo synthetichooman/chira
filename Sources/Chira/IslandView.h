@@ -6,6 +6,7 @@
 
 @protocol IslandViewDelegate <NSObject>
 - (void)islandView:(IslandView *)view didSelectClipboardItemAtIndex:(NSInteger)index;
+- (void)islandViewDidRequestSettings:(IslandView *)view;
 @end
 
 @interface IslandView : NSView
@@ -19,6 +20,7 @@
 @property (nonatomic) CGFloat topSafeInset;
 @property (nonatomic) CGFloat notchWidth;
 @property (nonatomic) BOOL hasNotch;
+@property (nonatomic) NSInteger maxVisibleClipboardItems;
 
 - (void)setMode:(ChiraIslandMode)mode transientDuration:(NSTimeInterval)duration;
 - (void)playClipboardIngestPulse;

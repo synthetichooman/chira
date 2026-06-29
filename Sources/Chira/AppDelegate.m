@@ -3,14 +3,18 @@
 
 static const NSTimeInterval ChiraClipboardIngestDelay = 0.42;
 static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
+static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboardItems";
 
 @implementation AppDelegate {
     NSPanel *_panel;
+    NSPanel *_settingsPanel;
     IslandView *_islandView;
     NSStatusItem *_statusItem;
     NSTimer *_pointerTimer;
     NSTimer *_clipboardTimer;
     NSTimer *_clipboardIngestTimer;
+    NSTextField *_settingsCountValueLabel;
+    NSStepper *_settingsCountStepper;
     NSTimeInterval _clipboardPollingResumeTime;
     NSInteger _lastClipboardChangeCount;
     NSMutableArray<ClipboardHistoryItem *> *_clipboardHistory;
@@ -19,6 +23,9 @@ static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    [NSUserDefaults.standardUserDefaults registerDefaults:@{
+        ChiraMaxVisibleClipboardItemsKey: @5
+    }];
 
     _clipboardHistory = [NSMutableArray array];
     [self setupPanel];
@@ -51,7 +58,7 @@ static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
 }
 
 - (void)setupPanel {
-    NSSize panelSize = NSMakeSize(560, 340);
+    NSSize panelSize = NSMakeSize(560, 440);
     _panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
                                         styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                                           backing:NSBackingStoreBuffered
@@ -70,6 +77,7 @@ static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
 
     _islandView = [[IslandView alloc] initWithFrame:NSMakeRect(0, 0, panelSize.width, panelSize.height)];
     _islandView.delegate = self;
+    _islandView.maxVisibleClipboardItems = [self maxVisibleClipboardItems];
     _panel.contentView = _islandView;
 
     [self recenterIsland];
@@ -95,6 +103,124 @@ static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
     [_panel orderFrontRegardless];
     _panel.ignoresMouseEvents = NO;
     [_islandView setMode:ChiraIslandModeClipboard transientDuration:1.4];
+}
+
+- (NSInteger)maxVisibleClipboardItems {
+    NSInteger value = [NSUserDefaults.standardUserDefaults integerForKey:ChiraMaxVisibleClipboardItemsKey];
+    return MAX(1, MIN(8, value > 0 ? value : 5));
+}
+
+- (NSTextField *)settingsLabelWithString:(NSString *)string frame:(NSRect)frame {
+    NSTextField *label = [NSTextField labelWithString:string];
+    label.frame = frame;
+    label.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+    label.textColor = [NSColor colorWithWhite:0.82 alpha:1];
+    return label;
+}
+
+- (NSTextField *)settingsValueLabelWithString:(NSString *)string frame:(NSRect)frame {
+    NSTextField *label = [NSTextField labelWithString:string];
+    label.frame = frame;
+    label.font = [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightSemibold];
+    label.alignment = NSTextAlignmentCenter;
+    label.textColor = NSColor.whiteColor;
+    return label;
+}
+
+- (void)setupSettingsPanelIfNeeded {
+    if (_settingsPanel) return;
+
+    NSSize panelSize = NSMakeSize(270, 178);
+    _settingsPanel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
+                                                styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
+                                                  backing:NSBackingStoreBuffered
+                                                    defer:NO];
+    _settingsPanel.opaque = NO;
+    _settingsPanel.backgroundColor = NSColor.clearColor;
+    _settingsPanel.hasShadow = YES;
+    _settingsPanel.level = CGWindowLevelForKey(kCGStatusWindowLevelKey);
+    _settingsPanel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
+        NSWindowCollectionBehaviorFullScreenAuxiliary |
+        NSWindowCollectionBehaviorStationary;
+
+    NSView *contentView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, panelSize.width, panelSize.height)];
+    contentView.wantsLayer = YES;
+    contentView.layer.backgroundColor = [NSColor colorWithWhite:0.05 alpha:0.96].CGColor;
+    contentView.layer.cornerRadius = 14;
+    contentView.layer.borderWidth = 1;
+    contentView.layer.borderColor = [NSColor colorWithWhite:1 alpha:0.10].CGColor;
+    _settingsPanel.contentView = contentView;
+
+    NSTextField *title = [NSTextField labelWithString:@"Settings"];
+    title.frame = NSMakeRect(18, 144, 160, 20);
+    title.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
+    title.textColor = NSColor.whiteColor;
+    [contentView addSubview:title];
+
+    NSButton *closeButton = [[NSButton alloc] initWithFrame:NSMakeRect(232, 140, 22, 22)];
+    closeButton.bezelStyle = NSBezelStyleTexturedRounded;
+    closeButton.bordered = NO;
+    closeButton.image = [NSImage imageWithSystemSymbolName:@"xmark.circle.fill" accessibilityDescription:@"Close"];
+    closeButton.imagePosition = NSImageOnly;
+    closeButton.target = self;
+    closeButton.action = @selector(closeSettingsPanel:);
+    [contentView addSubview:closeButton];
+
+    [contentView addSubview:[self settingsLabelWithString:@"Visible clipboard items" frame:NSMakeRect(18, 105, 160, 18)]];
+
+    _settingsCountValueLabel = [self settingsValueLabelWithString:@"" frame:NSMakeRect(178, 103, 28, 22)];
+    [contentView addSubview:_settingsCountValueLabel];
+
+    _settingsCountStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(214, 98, 18, 28)];
+    _settingsCountStepper.minValue = 1;
+    _settingsCountStepper.maxValue = 8;
+    _settingsCountStepper.increment = 1;
+    _settingsCountStepper.target = self;
+    _settingsCountStepper.action = @selector(settingsCountStepperChanged:);
+    [contentView addSubview:_settingsCountStepper];
+
+    NSBox *divider = [[NSBox alloc] initWithFrame:NSMakeRect(18, 84, 234, 1)];
+    divider.boxType = NSBoxCustom;
+    divider.transparent = NO;
+    divider.fillColor = [NSColor colorWithWhite:1 alpha:0.10];
+    [contentView addSubview:divider];
+
+    [contentView addSubview:[self settingsLabelWithString:@"Developer: kimminpyo" frame:NSMakeRect(18, 54, 220, 18)]];
+
+    NSTextField *github = [self settingsLabelWithString:@"GitHub: synthetichooman/chira" frame:NSMakeRect(18, 30, 226, 18)];
+    github.selectable = YES;
+    [contentView addSubview:github];
+}
+
+- (void)refreshSettingsPanelValues {
+    NSInteger count = [self maxVisibleClipboardItems];
+    _settingsCountStepper.integerValue = count;
+    _settingsCountValueLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)count];
+}
+
+- (void)showSettingsPanel {
+    [self setupSettingsPanelIfNeeded];
+    [self refreshSettingsPanelValues];
+
+    NSRect parentFrame = _panel.frame;
+    NSSize size = _settingsPanel.frame.size;
+    CGFloat x = NSMidX(parentFrame) - size.width / 2.0;
+    CGFloat y = NSMaxY(parentFrame) - size.height - 112;
+    [_settingsPanel setFrame:NSMakeRect(x, y, size.width, size.height) display:YES];
+    [_settingsPanel orderFrontRegardless];
+}
+
+- (void)settingsCountStepperChanged:(NSStepper *)sender {
+    NSInteger count = MAX(1, MIN(8, sender.integerValue));
+    [NSUserDefaults.standardUserDefaults setInteger:count forKey:ChiraMaxVisibleClipboardItemsKey];
+    _islandView.maxVisibleClipboardItems = count;
+    [self refreshSettingsPanelValues];
+    [_islandView setNeedsDisplay:YES];
+}
+
+- (void)closeSettingsPanel:(id)sender {
+    (void)sender;
+    [_settingsPanel orderOut:nil];
 }
 
 - (void)recenterIsland {
@@ -286,6 +412,11 @@ static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
 
     [_panel orderFrontRegardless];
     [_islandView setMode:ChiraIslandModeClipboard transientDuration:1.8];
+}
+
+- (void)islandViewDidRequestSettings:(IslandView *)view {
+    (void)view;
+    [self showSettingsPanel];
 }
 
 @end

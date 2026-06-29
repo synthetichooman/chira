@@ -54,6 +54,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     _topSafeInset = 6;
     _notchWidth = 0;
     _hasNotch = NO;
+    _maxVisibleClipboardItems = 5;
     _ingestPulse = 0;
     _lastInvalidatedIslandRect = NSZeroRect;
     _pressedClipboardIndex = -1;
@@ -93,6 +94,11 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
     NSRect islandRect = [self currentIslandRect];
     if (!NSPointInRect(point, islandRect)) return;
+
+    if (NSPointInRect(point, [self settingsButtonRectInIslandRect:islandRect])) {
+        [self.delegate islandViewDidRequestSettings:self];
+        return;
+    }
 
     IslandModule *module = [self displayModule];
     NSInteger index = [self clipboardItemIndexAtPoint:point forModule:module inIslandRect:islandRect];
@@ -263,6 +269,18 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                                      progress:0];
 }
 
+- (NSInteger)visibleClipboardItemLimit {
+    return MAX(1, MIN(8, self.maxVisibleClipboardItems > 0 ? self.maxVisibleClipboardItems : 5));
+}
+
+- (NSRect)settingsButtonRectInIslandRect:(NSRect)rect {
+    if (_progress < 0.35) return NSZeroRect;
+
+    CGFloat contentTop = NSMinY(rect) + MAX(self.topSafeInset + 12, 18);
+    CGFloat horizontalPadding = 40;
+    return NSMakeRect(NSMaxX(rect) - horizontalPadding - 24, contentTop - 1, 24, 24);
+}
+
 - (ClipboardHistoryItem *)clipboardItemFromObject:(id)object {
     return [object isKindOfClass:ClipboardHistoryItem.class] ? object : nil;
 }
@@ -344,7 +362,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     CGFloat rowTop = contentTop + 42;
     CGFloat contentX = NSMinX(rect) + horizontalPadding;
     CGFloat contentWidth = NSWidth(rect) - horizontalPadding * 2;
-    NSInteger count = MIN((NSInteger)module.items.count, 5);
+    NSInteger count = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
 
     for (NSInteger index = 0; index < count; index++) {
         CGFloat rowHeight = [self clipboardRowHeightForObject:module.items[index] atIndex:index width:contentWidth];
@@ -373,7 +391,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     };
 
     NSMutableArray<NSDictionary *> *targets = [NSMutableArray array];
-    NSInteger count = MIN((NSInteger)module.items.count, 5);
+    NSInteger count = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
     CGFloat rowTop = listTop;
     for (NSInteger index = 0; index < count; index++) {
         id object = module.items[index];
@@ -458,7 +476,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 - (CGFloat)expandedContentHeight {
     IslandModule *module = [self displayModule];
     if ([module.identifier isEqualToString:ChiraModuleIdentifierClipboard]) {
-        NSInteger rowCount = MIN((NSInteger)module.items.count, 5);
+        NSInteger rowCount = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
         if (rowCount == 0) return 96;
 
         CGFloat contentWidth = 470 - 40 * 2;
@@ -590,9 +608,23 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         NSForegroundColorAttributeName: [NSColor colorWithWhite:1 alpha:0.62 * contentAlpha]
     };
 
-    [primary drawWithRect:NSMakeRect(contentX, contentTop + 3, contentWidth, 18)
+    CGFloat titleWidth = [module.identifier isEqualToString:ChiraModuleIdentifierClipboard] ? contentWidth - 34 : contentWidth;
+    [primary drawWithRect:NSMakeRect(contentX, contentTop + 3, titleWidth, 18)
                   options:NSStringDrawingTruncatesLastVisibleLine
                attributes:primaryAttributes];
+
+    if ([module.identifier isEqualToString:ChiraModuleIdentifierClipboard]) {
+        NSRect settingsRect = [self settingsButtonRectInIslandRect:rect];
+        NSImage *gear = [NSImage imageWithSystemSymbolName:@"gearshape.fill" accessibilityDescription:@"Settings"];
+        gear = [gear imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium]];
+        NSRect imageRect = NSInsetRect(settingsRect, 4, 4);
+        [gear drawInRect:imageRect
+                fromRect:NSZeroRect
+               operation:NSCompositingOperationSourceOver
+                fraction:0.48 * contentAlpha
+          respectFlipped:YES
+                   hints:nil];
+    }
 
     if (module.style == ChiraModuleStyleProgress) {
         NSRect barRect = NSMakeRect(contentX, contentTop + 33, contentWidth, 8);
