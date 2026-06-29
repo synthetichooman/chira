@@ -152,7 +152,9 @@ static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
 
     _lastClipboardChangeCount = changeCount;
     _clipboardPollingResumeTime = NSDate.timeIntervalSinceReferenceDate + ChiraClipboardPollingPause;
-    [_panel orderFrontRegardless];
+    if (!_panel.isVisible) {
+        [_panel orderFrontRegardless];
+    }
     [_islandView playClipboardIngestPulse];
 
     [_clipboardIngestTimer invalidate];

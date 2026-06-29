@@ -6,7 +6,23 @@ static const CGFloat ChiraFloatingHiddenHeight = 30.0;
 static const CGFloat ChiraFloatingTopMargin = 8.0;
 static const CGFloat ChiraHiddenNotchCornerRadius = 11.0;
 static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
-static const NSTimeInterval ChiraIngestPulseDuration = 0.30;
+static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
+
+static CGFloat ChiraSmoothStep(CGFloat value) {
+    CGFloat t = MIN(1.0, MAX(0.0, value));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+static CGFloat ChiraIngestPulseValue(CGFloat t) {
+    if (t < 0.38) {
+        return ChiraSmoothStep(t / 0.38);
+    }
+
+    CGFloat fallT = (t - 0.38) / 0.62;
+    CGFloat settle = 1.0 - ChiraSmoothStep(fallT);
+    CGFloat rebound = 0.10 * sin(fallT * M_PI * 3.2) * (1.0 - fallT);
+    return MAX(0.0, settle + rebound);
+}
 
 @implementation IslandView {
     NSTrackingArea *_trackingArea;
@@ -244,10 +260,7 @@ static const NSTimeInterval ChiraIngestPulseDuration = 0.30;
         NSTimeInterval elapsed = NSDate.timeIntervalSinceReferenceDate - _ingestPulseStartTime;
         CGFloat t = MIN(1.0, MAX(0.0, elapsed / ChiraIngestPulseDuration));
 
-        CGFloat quickT = pow(t, 0.72);
-        CGFloat down = sin(quickT * M_PI);
-        CGFloat rebound = 0.20 * sin(t * M_PI * 4.8) * (1.0 - t);
-        _ingestPulse = MAX(0.0, down + rebound);
+        _ingestPulse = ChiraIngestPulseValue(t);
 
         if (t >= 1.0) {
             _ingestPulse = 0;
