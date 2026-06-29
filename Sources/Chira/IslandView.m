@@ -328,6 +328,14 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     return hoverRect;
 }
 
+- (NSRect)clipboardImageHoverRectForRowRect:(NSRect)rowRect {
+    CGFloat hoverHeight = MAX(24.0, NSHeight(rowRect) - 8.0);
+    return NSMakeRect(NSMinX(rowRect) - 8.0,
+                      floor(NSMidY(rowRect) - hoverHeight / 2.0),
+                      NSWidth(rowRect) + 16.0,
+                      hoverHeight);
+}
+
 - (ClipboardHistoryItem *)clipboardItemFromObject:(id)object {
     return [object isKindOfClass:ClipboardHistoryItem.class] ? object : nil;
 }
@@ -368,14 +376,19 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 - (CGFloat)clipboardRowHeightForObject:(id)object atIndex:(NSInteger)index width:(CGFloat)width {
     if (index != _hoveredClipboardIndex) return ChiraClipboardBaseRowHeight;
 
-    ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
-    CGFloat expandedHeight = ChiraClipboardBaseRowHeight;
-    if (item.image) {
-        expandedHeight = ChiraClipboardImageHoverRowHeight;
-    } else if ([self clipboardTextNeedsExpansion:object atIndex:index width:width]) {
-        expandedHeight = ChiraClipboardTextHoverRowHeight;
-    }
+    CGFloat expandedHeight = [self expandedClipboardRowHeightForObject:object atIndex:index width:width];
     return ChiraClipboardBaseRowHeight + (expandedHeight - ChiraClipboardBaseRowHeight) * _hoverExpansion;
+}
+
+- (CGFloat)expandedClipboardRowHeightForObject:(id)object atIndex:(NSInteger)index width:(CGFloat)width {
+    ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
+    if (item.image) {
+        return ChiraClipboardImageHoverRowHeight;
+    }
+    if ([self clipboardTextNeedsExpansion:object atIndex:index width:width]) {
+        return ChiraClipboardTextHoverRowHeight;
+    }
+    return ChiraClipboardBaseRowHeight;
 }
 
 - (void)preparePreviewForHoveredClipboardItem {
@@ -539,9 +552,40 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     return 122;
 }
 
+- (CGFloat)expandedContentHeightForFullCurrentHover {
+    IslandModule *module = [self displayModule];
+    if (![module.identifier isEqualToString:ChiraModuleIdentifierClipboard]) return [self expandedContentHeight];
+
+    NSInteger rowCount = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
+    if (rowCount == 0) return 96;
+    if (_hoveredClipboardIndex < 0 || _hoveredClipboardIndex >= rowCount) return [self expandedContentHeight];
+
+    CGFloat contentWidth = 470 - 40 * 2;
+    CGFloat rowsHeight = 0;
+    for (NSInteger index = 0; index < rowCount; index++) {
+        id object = module.items[index];
+        rowsHeight += (index == _hoveredClipboardIndex)
+            ? [self expandedClipboardRowHeightForObject:object atIndex:index width:contentWidth]
+            : ChiraClipboardBaseRowHeight;
+    }
+    return 78 + rowsHeight;
+}
+
 - (BOOL)containsInteractivePoint:(NSPoint)point {
     if (_progress < 0.25) return NO;
-    return NSPointInRect(point, [self currentIslandRect]);
+
+    NSRect islandRect = [self currentIslandRect];
+    if (NSPointInRect(point, islandRect)) return YES;
+
+    if (self.mode == ChiraIslandModeClipboard && _hoveredClipboardIndex >= 0 && (_hoverExpansion > 0.01 || _targetHoverExpansion > 0.01)) {
+        CGFloat extraHeight = MAX(0, [self expandedContentHeightForFullCurrentHover] - [self expandedContentHeight]) * _progress;
+        if (extraHeight > 0) {
+            islandRect.size.height += extraHeight;
+            return NSPointInRect(point, islandRect);
+        }
+    }
+
+    return NO;
 }
 
 - (NSBezierPath *)topAttachedPathForRect:(NSRect)rect bottomRadius:(CGFloat)radius topShoulderRadius:(CGFloat)topShoulderRadius {
@@ -717,10 +761,16 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         NSRect rowRect = NSMakeRect(NSMinX(rect), rowTop, NSWidth(rect), rowHeight);
 
         if (hovered) {
-            CGFloat highlightHeight = MIN(24, rowHeight);
-            NSRect highlightRect = [self clipboardHoverRectForRowRect:rowRect height:highlightHeight horizontalInset:8];
+            NSRect highlightRect;
+            if (item.image) {
+                highlightRect = [self clipboardImageHoverRectForRowRect:rowRect];
+            } else {
+                CGFloat highlightHeight = MIN(24, rowHeight);
+                highlightRect = [self clipboardHoverRectForRowRect:rowRect height:highlightHeight horizontalInset:8];
+            }
             [[NSColor colorWithWhite:1 alpha:0.07 * contentAlpha * MAX(0.25, _hoverExpansion)] setFill];
-            [[NSBezierPath bezierPathWithRoundedRect:highlightRect xRadius:8 yRadius:8] fill];
+            CGFloat radius = MIN(10.0, NSHeight(highlightRect) / 2.0);
+            [[NSBezierPath bezierPathWithRoundedRect:highlightRect xRadius:radius yRadius:radius] fill];
         }
 
         NSDictionary *itemAttributes = @{
