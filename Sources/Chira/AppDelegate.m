@@ -7,6 +7,7 @@
     NSStatusItem *_statusItem;
     NSTimer *_pointerTimer;
     NSTimer *_clipboardTimer;
+    NSTimer *_clipboardRevealTimer;
     NSInteger _lastClipboardChangeCount;
     NSMutableArray<ClipboardHistoryItem *> *_clipboardHistory;
     NSRect _notchHotZone;
@@ -42,6 +43,7 @@
 - (void)applicationWillTerminate:(NSNotification *)notification {
     [_pointerTimer invalidate];
     [_clipboardTimer invalidate];
+    [_clipboardRevealTimer invalidate];
 }
 
 - (void)setupPanel {
@@ -148,6 +150,17 @@
     [self addClipboardHistoryItem:item];
     [_panel orderFrontRegardless];
     [_islandView playClipboardIngestPulse];
+
+    [_clipboardRevealTimer invalidate];
+    _clipboardRevealTimer = [NSTimer scheduledTimerWithTimeInterval:0.14
+                                                             target:self
+                                                           selector:@selector(revealClipboardIslandAfterPulse)
+                                                           userInfo:nil
+                                                            repeats:NO];
+}
+
+- (void)revealClipboardIslandAfterPulse {
+    _clipboardRevealTimer = nil;
     [_islandView setMode:ChiraIslandModeClipboard transientDuration:2.3];
 }
 

@@ -119,12 +119,12 @@
 
 - (void)ingestPulseTick {
     NSTimeInterval elapsed = NSDate.timeIntervalSinceReferenceDate - _ingestPulseStartTime;
-    CGFloat duration = 0.48;
+    CGFloat duration = 0.42;
     CGFloat t = MIN(1.0, MAX(0.0, elapsed / duration));
 
-    CGFloat intake = sin(t * M_PI);
-    CGFloat rebound = 0.18 * sin(t * M_PI * 3.0) * (1.0 - t);
-    _ingestPulse = MAX(0.0, intake + rebound);
+    CGFloat down = sin(t * M_PI);
+    CGFloat rebound = 0.12 * sin(t * M_PI * 4.0) * (1.0 - t);
+    _ingestPulse = MAX(0.0, down + rebound);
 
     if (t >= 1.0) {
         _ingestPulse = 0;
@@ -243,12 +243,9 @@
     CGFloat height = hiddenHeight + (expandedHeight - hiddenHeight) * _progress;
 
     CGFloat hiddenBias = 1.0 - MIN(1.0, _progress * 1.7);
-    CGFloat pulseWidth = 24 * _ingestPulse * hiddenBias;
-    CGFloat pulseHeight = (10 * hiddenBias + 5 * (1.0 - hiddenBias)) * _ingestPulse;
-    width += pulseWidth;
-    height += pulseHeight;
+    CGFloat pulseOffsetY = (9 * hiddenBias + 4 * (1.0 - hiddenBias)) * _ingestPulse;
 
-    return NSMakeRect((NSWidth(self.bounds) - width) / 2.0, 0, width, height);
+    return NSMakeRect((NSWidth(self.bounds) - width) / 2.0, pulseOffsetY, width, height);
 }
 
 - (CGFloat)expandedContentHeight {
@@ -313,7 +310,7 @@
     if (_progress < 0.01 && _ingestPulse < 0.01) return;
 
     NSRect islandRect = [self currentIslandRect];
-    CGFloat visualProgress = MAX(_progress, _ingestPulse * 0.28);
+    CGFloat visualProgress = MAX(_progress, _ingestPulse * 0.08);
     CGFloat radius = 18 + (30 - 18) * visualProgress;
     CGFloat topShoulderRadius = 16 * visualProgress;
     NSBezierPath *shape = [self topAttachedPathForRect:islandRect bottomRadius:radius topShoulderRadius:topShoulderRadius];
