@@ -1,6 +1,8 @@
 #import "AppDelegate.h"
 #import "ClipboardHistoryItem.h"
 
+static const NSTimeInterval ChiraClipboardRevealDelay = 0.34;
+
 @implementation AppDelegate {
     NSPanel *_panel;
     IslandView *_islandView;
@@ -153,7 +155,7 @@
     [_islandView playClipboardIngestPulse];
 
     [_clipboardRevealTimer invalidate];
-    _clipboardRevealTimer = [NSTimer scheduledTimerWithTimeInterval:0.14
+    _clipboardRevealTimer = [NSTimer scheduledTimerWithTimeInterval:ChiraClipboardRevealDelay
                                                              target:self
                                                            selector:@selector(revealClipboardIslandAfterPulse)
                                                            userInfo:nil
