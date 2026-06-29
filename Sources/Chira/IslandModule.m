@@ -5,7 +5,7 @@
 + (instancetype)moduleWithIdentifier:(NSString *)identifier
                                 title:(NSString *)title
                              subtitle:(NSString *)subtitle
-                                items:(NSArray<NSString *> *)items
+                                items:(NSArray *)items
                           accentColor:(NSColor *)accentColor
                                 style:(ChiraModuleStyle)style
                              progress:(double)progress {

@@ -5,6 +5,7 @@
 @property (nonatomic, copy) NSString *stringValue;
 @property (nonatomic, copy) NSData *dataValue;
 @property (nonatomic, copy) NSPasteboardType pasteboardType;
+@property (nonatomic, strong) NSImage *previewImage;
 @property (nonatomic) BOOL image;
 
 + (instancetype)textItemWithString:(NSString *)string;

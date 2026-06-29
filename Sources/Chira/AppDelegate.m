@@ -51,7 +51,7 @@ static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
 }
 
 - (void)setupPanel {
-    NSSize panelSize = NSMakeSize(560, 280);
+    NSSize panelSize = NSMakeSize(560, 340);
     _panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
                                         styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                                           backing:NSBackingStoreBuffered
@@ -180,15 +180,10 @@ static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
         ? @"No recent items"
         : [NSString stringWithFormat:@"%lu recent item%@", (unsigned long)count, count == 1 ? @"" : @"s"];
 
-    NSMutableArray<NSString *> *displayItems = [NSMutableArray array];
-    for (ClipboardHistoryItem *item in _clipboardHistory) {
-        [displayItems addObject:item.displayText ?: @""];
-    }
-
     IslandModule *clipboardModule = [IslandModule moduleWithIdentifier:ChiraModuleIdentifierClipboard
                                                                   title:@"Clipboard"
                                                                subtitle:subtitle
-                                                                  items:displayItems
+                                                                  items:[_clipboardHistory copy]
                                                             accentColor:NSColor.systemGreenColor
                                                                   style:(count > 0 ? ChiraModuleStyleList : ChiraModuleStyleDefault)
                                                                progress:0];
@@ -256,11 +251,6 @@ static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
     }
 
     _islandView.clipboardSummary = item.displayText ?: @"Clipboard updated";
-    NSMutableArray<NSString *> *displayItems = [NSMutableArray array];
-    for (ClipboardHistoryItem *historyItem in _clipboardHistory) {
-        [displayItems addObject:historyItem.displayText ?: @""];
-    }
-    _islandView.clipboardItems = displayItems;
     [self syncModules];
 }
 
