@@ -1,6 +1,6 @@
 # Chira
 
-Chira is a tiny personal macOS notch overlay. The name comes from the Japanese idea of a quick glance.
+Chira is a lightweight native macOS utility that uses the notch area as a small clipboard history overlay.
 
 Version: `0.1`
 
