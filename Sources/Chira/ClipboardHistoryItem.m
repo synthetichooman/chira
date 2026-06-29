@@ -24,13 +24,7 @@
         item.dataValue = imageData;
         item.pasteboardType = imageType;
         item.image = YES;
-
-        NSImage *image = [[NSImage alloc] initWithData:imageData];
-        if (image && image.size.width > 0 && image.size.height > 0) {
-            item.displayText = [NSString stringWithFormat:@"Image - %.0fx%.0f", image.size.width, image.size.height];
-        } else {
-            item.displayText = @"Image copied";
-        }
+        item.displayText = @"Image copied";
         return item;
     }
 

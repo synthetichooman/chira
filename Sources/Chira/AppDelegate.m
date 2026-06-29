@@ -1,12 +1,17 @@
 #import "AppDelegate.h"
 #import "ClipboardHistoryItem.h"
 
+static const NSTimeInterval ChiraClipboardIngestDelay = 0.42;
+static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
+
 @implementation AppDelegate {
     NSPanel *_panel;
     IslandView *_islandView;
     NSStatusItem *_statusItem;
     NSTimer *_pointerTimer;
     NSTimer *_clipboardTimer;
+    NSTimer *_clipboardIngestTimer;
+    NSTimeInterval _clipboardPollingResumeTime;
     NSInteger _lastClipboardChangeCount;
     NSMutableArray<ClipboardHistoryItem *> *_clipboardHistory;
     NSRect _notchHotZone;
@@ -42,6 +47,7 @@
 - (void)applicationWillTerminate:(NSNotification *)notification {
     [_pointerTimer invalidate];
     [_clipboardTimer invalidate];
+    [_clipboardIngestTimer invalidate];
 }
 
 - (void)setupPanel {
@@ -138,17 +144,32 @@
 }
 
 - (void)clipboardTimerTick {
+    if (NSDate.timeIntervalSinceReferenceDate < _clipboardPollingResumeTime) return;
+
     NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
     NSInteger changeCount = pasteboard.changeCount;
     if (changeCount == _lastClipboardChangeCount) return;
 
     _lastClipboardChangeCount = changeCount;
-    ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:pasteboard];
+    _clipboardPollingResumeTime = NSDate.timeIntervalSinceReferenceDate + ChiraClipboardPollingPause;
+    [_panel orderFrontRegardless];
+    [_islandView playClipboardIngestPulse];
+
+    [_clipboardIngestTimer invalidate];
+    _clipboardIngestTimer = [NSTimer scheduledTimerWithTimeInterval:ChiraClipboardIngestDelay
+                                                             target:self
+                                                           selector:@selector(ingestClipboardAfterPulse)
+                                                           userInfo:nil
+                                                            repeats:NO];
+}
+
+- (void)ingestClipboardAfterPulse {
+    _clipboardIngestTimer = nil;
+
+    ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:NSPasteboard.generalPasteboard];
     if (!item) return;
 
     [self addClipboardHistoryItem:item];
-    [_panel orderFrontRegardless];
-    [_islandView playClipboardIngestPulse];
 }
 
 - (void)syncModules {
