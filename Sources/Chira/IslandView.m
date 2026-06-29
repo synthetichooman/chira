@@ -399,8 +399,13 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         NSString *line = [self displayLineForClipboardObject:object atIndex:index];
         CGFloat textWidth = ceil([line sizeWithAttributes:targetAttributes].width);
         CGFloat targetWidth = MIN(contentWidth, MAX(textWidth + 8, [self clipboardItemFromObject:object].image ? 220 : 0));
+        NSRect rowRect = NSMakeRect(contentX - 4, rowTop, targetWidth, rowHeight);
+        CGFloat targetHeight = MIN(MAX(22, rowHeight - 6), rowHeight);
         [targets addObject:@{
-            @"rect": [NSValue valueWithRect:NSMakeRect(contentX - 4, rowTop + 3, targetWidth, MAX(22, rowHeight - 6))],
+            @"rect": [NSValue valueWithRect:NSMakeRect(NSMinX(rowRect),
+                                                       floor(NSMidY(rowRect) - targetHeight / 2.0),
+                                                       NSWidth(rowRect),
+                                                       targetHeight)],
             @"index": @(index)
         }];
         rowTop += rowHeight;
@@ -616,12 +621,14 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     if ([module.identifier isEqualToString:ChiraModuleIdentifierClipboard]) {
         NSRect settingsRect = [self settingsButtonRectInIslandRect:rect];
         NSImage *gear = [NSImage imageWithSystemSymbolName:@"gearshape.fill" accessibilityDescription:@"Settings"];
-        gear = [gear imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium]];
+        NSImageSymbolConfiguration *sizeConfig = [NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium];
+        NSImageSymbolConfiguration *colorConfig = [NSImageSymbolConfiguration configurationWithHierarchicalColor:[NSColor colorWithWhite:1 alpha:0.62 * contentAlpha]];
+        gear = [[gear imageWithSymbolConfiguration:sizeConfig] imageWithSymbolConfiguration:colorConfig];
         NSRect imageRect = NSInsetRect(settingsRect, 4, 4);
         [gear drawInRect:imageRect
                 fromRect:NSZeroRect
                operation:NSCompositingOperationSourceOver
-                fraction:0.62 * contentAlpha
+                fraction:1.0
           respectFlipped:YES
                    hints:nil];
     }
@@ -651,7 +658,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 }
 
 - (void)drawClipboardItems:(NSArray *)items inRect:(NSRect)rect contentAlpha:(CGFloat)contentAlpha {
-    NSInteger count = MIN((NSInteger)items.count, 5);
+    NSInteger count = MIN((NSInteger)items.count, [self visibleClipboardItemLimit]);
     CGFloat rowTop = NSMinY(rect);
 
     for (NSInteger index = 0; index < count; index++) {
@@ -664,8 +671,13 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         NSRect rowRect = NSMakeRect(NSMinX(rect), rowTop, NSWidth(rect), rowHeight);
 
         if (hovered) {
+            CGFloat highlightHeight = MIN(24, rowHeight);
+            NSRect highlightRect = NSMakeRect(NSMinX(rowRect) - 8,
+                                              floor(NSMidY(rowRect) - highlightHeight / 2.0),
+                                              NSWidth(rowRect) + 16,
+                                              highlightHeight);
             [[NSColor colorWithWhite:1 alpha:0.07 * contentAlpha * MAX(0.25, _hoverExpansion)] setFill];
-            [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(rowRect, -8, 2) xRadius:8 yRadius:8] fill];
+            [[NSBezierPath bezierPathWithRoundedRect:highlightRect xRadius:8 yRadius:8] fill];
         }
 
         NSDictionary *itemAttributes = @{
@@ -711,7 +723,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                                options:NSStringDrawingUsesLineFragmentOrigin
                             attributes:expandedAttributes];
         } else {
-            NSRect itemRect = NSMakeRect(NSMinX(rowRect), NSMinY(rowRect) + 5, NSWidth(rowRect), 18);
+            NSRect itemRect = NSMakeRect(NSMinX(rowRect), floor(NSMidY(rowRect) - 9), NSWidth(rowRect), 18);
             [line drawWithRect:itemRect options:NSStringDrawingTruncatesLastVisibleLine attributes:itemAttributes];
         }
 
