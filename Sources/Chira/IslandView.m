@@ -4,7 +4,8 @@ static const CGFloat ChiraMacBookPro14NotchWidth = 210.0;
 static const CGFloat ChiraFloatingHiddenWidth = 168.0;
 static const CGFloat ChiraFloatingHiddenHeight = 30.0;
 static const CGFloat ChiraFloatingTopMargin = 8.0;
-static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
+static const CGFloat ChiraHiddenNotchCornerRadius = 11.0;
+static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
 
 @implementation IslandView {
     NSTrackingArea *_trackingArea;
@@ -126,11 +127,12 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
 
 - (void)ingestPulseTick {
     NSTimeInterval elapsed = NSDate.timeIntervalSinceReferenceDate - _ingestPulseStartTime;
-    CGFloat duration = 0.42;
+    CGFloat duration = 0.30;
     CGFloat t = MIN(1.0, MAX(0.0, elapsed / duration));
 
-    CGFloat down = sin(t * M_PI);
-    CGFloat rebound = 0.12 * sin(t * M_PI * 4.0) * (1.0 - t);
+    CGFloat quickT = pow(t, 0.72);
+    CGFloat down = sin(quickT * M_PI);
+    CGFloat rebound = 0.20 * sin(t * M_PI * 4.8) * (1.0 - t);
     _ingestPulse = MAX(0.0, down + rebound);
 
     if (t >= 1.0) {
@@ -330,8 +332,8 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
 
     NSRect islandRect = [self currentIslandRect];
     CGFloat visualProgress = MAX(_progress, _ingestPulse * 0.08);
-    CGFloat radius = 18 + (30 - 18) * visualProgress;
-    CGFloat topShoulderRadius = self.hasNotch ? 16 * visualProgress : 0;
+    CGFloat radius = ChiraHiddenNotchCornerRadius + (30 - ChiraHiddenNotchCornerRadius) * _progress;
+    CGFloat topShoulderRadius = self.hasNotch ? 16 * _progress : 0;
     NSBezierPath *shape = [self islandShapeForRect:islandRect bottomRadius:radius topShoulderRadius:topShoulderRadius];
 
     NSShadow *shadow = [NSShadow new];
