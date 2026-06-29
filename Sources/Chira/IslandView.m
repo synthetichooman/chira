@@ -10,6 +10,9 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
 static const CGFloat ChiraClipboardBaseRowHeight = 28.0;
 static const CGFloat ChiraClipboardTextHoverRowHeight = 58.0;
 static const CGFloat ChiraClipboardImageHoverRowHeight = 84.0;
+static const CGFloat ChiraHeaderTextHeight = 18.0;
+static const CGFloat ChiraHeaderButtonSize = 24.0;
+static const CGFloat ChiraClipboardRowTextHeight = 18.0;
 static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
 
 static CGFloat ChiraSmoothStep(CGFloat value) {
@@ -273,12 +276,47 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     return MAX(1, MIN(8, self.maxVisibleClipboardItems > 0 ? self.maxVisibleClipboardItems : 5));
 }
 
+- (CGFloat)contentTopForIslandRect:(NSRect)rect {
+    return NSMinY(rect) + MAX(self.topSafeInset + 12, 18);
+}
+
+- (CGFloat)contentXForIslandRect:(NSRect)rect horizontalPadding:(CGFloat)horizontalPadding {
+    return NSMinX(rect) + horizontalPadding;
+}
+
+- (CGFloat)contentWidthForIslandRect:(NSRect)rect horizontalPadding:(CGFloat)horizontalPadding {
+    return NSWidth(rect) - horizontalPadding * 2;
+}
+
+- (NSRect)headerTitleRectInIslandRect:(NSRect)rect horizontalPadding:(CGFloat)horizontalPadding reservesSettings:(BOOL)reservesSettings {
+    CGFloat contentTop = [self contentTopForIslandRect:rect];
+    CGFloat contentX = [self contentXForIslandRect:rect horizontalPadding:horizontalPadding];
+    CGFloat contentWidth = [self contentWidthForIslandRect:rect horizontalPadding:horizontalPadding];
+    CGFloat titleWidth = reservesSettings ? contentWidth - 34 : contentWidth;
+    return NSMakeRect(contentX, floor(contentTop + 3), titleWidth, ChiraHeaderTextHeight);
+}
+
+- (CGFloat)clipboardListTopForIslandRect:(NSRect)rect horizontalPadding:(CGFloat)horizontalPadding {
+    NSRect titleRect = [self headerTitleRectInIslandRect:rect horizontalPadding:horizontalPadding reservesSettings:YES];
+    return NSMaxY(titleRect) + 21;
+}
+
 - (NSRect)settingsButtonRectInIslandRect:(NSRect)rect {
     if (_progress < 0.35) return NSZeroRect;
 
-    CGFloat contentTop = NSMinY(rect) + MAX(self.topSafeInset + 12, 18);
     CGFloat horizontalPadding = 40;
-    return NSMakeRect(NSMaxX(rect) - horizontalPadding - 24, contentTop - 1, 24, 24);
+    NSRect titleRect = [self headerTitleRectInIslandRect:rect horizontalPadding:horizontalPadding reservesSettings:YES];
+    return NSMakeRect(NSMaxX(rect) - horizontalPadding - ChiraHeaderButtonSize,
+                      floor(NSMidY(titleRect) - ChiraHeaderButtonSize / 2.0),
+                      ChiraHeaderButtonSize,
+                      ChiraHeaderButtonSize);
+}
+
+- (NSRect)singleLineTextRectForRowRect:(NSRect)rowRect {
+    return NSMakeRect(NSMinX(rowRect),
+                      floor(NSMidY(rowRect) - ChiraClipboardRowTextHeight / 2.0),
+                      NSWidth(rowRect),
+                      ChiraClipboardRowTextHeight);
 }
 
 - (ClipboardHistoryItem *)clipboardItemFromObject:(id)object {
@@ -357,11 +395,10 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         return -1;
     }
 
-    CGFloat contentTop = NSMinY(rect) + MAX(self.topSafeInset + 12, 18);
     CGFloat horizontalPadding = 40;
-    CGFloat rowTop = contentTop + 42;
-    CGFloat contentX = NSMinX(rect) + horizontalPadding;
-    CGFloat contentWidth = NSWidth(rect) - horizontalPadding * 2;
+    CGFloat rowTop = [self clipboardListTopForIslandRect:rect horizontalPadding:horizontalPadding];
+    CGFloat contentX = [self contentXForIslandRect:rect horizontalPadding:horizontalPadding];
+    CGFloat contentWidth = [self contentWidthForIslandRect:rect horizontalPadding:horizontalPadding];
     NSInteger count = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
 
     for (NSInteger index = 0; index < count; index++) {
@@ -381,11 +418,10 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         return @[];
     }
 
-    CGFloat contentTop = NSMinY(rect) + MAX(self.topSafeInset + 12, 18);
     CGFloat horizontalPadding = 40;
-    CGFloat listTop = contentTop + 42;
-    CGFloat contentX = NSMinX(rect) + horizontalPadding;
-    CGFloat contentWidth = NSWidth(rect) - horizontalPadding * 2;
+    CGFloat listTop = [self clipboardListTopForIslandRect:rect horizontalPadding:horizontalPadding];
+    CGFloat contentX = [self contentXForIslandRect:rect horizontalPadding:horizontalPadding];
+    CGFloat contentWidth = [self contentWidthForIslandRect:rect horizontalPadding:horizontalPadding];
     NSDictionary *targetAttributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold]
     };
@@ -401,11 +437,12 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         CGFloat targetWidth = MIN(contentWidth, MAX(textWidth + 8, [self clipboardItemFromObject:object].image ? 220 : 0));
         NSRect rowRect = NSMakeRect(contentX - 4, rowTop, targetWidth, rowHeight);
         CGFloat targetHeight = MIN(MAX(22, rowHeight - 6), rowHeight);
+        NSRect targetRect = [self singleLineTextRectForRowRect:rowRect];
+        targetRect.origin.x = NSMinX(rowRect);
+        targetRect.size.width = NSWidth(rowRect);
+        targetRect = NSInsetRect(targetRect, 0, -(targetHeight - ChiraClipboardRowTextHeight) / 2.0);
         [targets addObject:@{
-            @"rect": [NSValue valueWithRect:NSMakeRect(NSMinX(rowRect),
-                                                       floor(NSMidY(rowRect) - targetHeight / 2.0),
-                                                       NSWidth(rowRect),
-                                                       targetHeight)],
+            @"rect": [NSValue valueWithRect:targetRect],
             @"index": @(index)
         }];
         rowTop += rowHeight;
@@ -600,9 +637,11 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     NSColor *tint = module.accentColor ?: NSColor.whiteColor;
     NSString *primary = module.title.length ? module.title : @"Chira";
     NSString *secondary = module.subtitle.length ? module.subtitle : @"Ready";
-    CGFloat contentTop = NSMinY(rect) + MAX(self.topSafeInset + 12, 18);
-    CGFloat contentX = NSMinX(rect) + horizontalPadding;
-    CGFloat contentWidth = NSWidth(rect) - horizontalPadding * 2;
+    CGFloat contentTop = [self contentTopForIslandRect:rect];
+    CGFloat contentX = [self contentXForIslandRect:rect horizontalPadding:horizontalPadding];
+    CGFloat contentWidth = [self contentWidthForIslandRect:rect horizontalPadding:horizontalPadding];
+    BOOL isClipboardModule = [module.identifier isEqualToString:ChiraModuleIdentifierClipboard];
+    NSRect titleRect = [self headerTitleRectInIslandRect:rect horizontalPadding:horizontalPadding reservesSettings:isClipboardModule];
 
     NSDictionary *primaryAttributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold],
@@ -613,12 +652,11 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         NSForegroundColorAttributeName: [NSColor colorWithWhite:1 alpha:0.62 * contentAlpha]
     };
 
-    CGFloat titleWidth = [module.identifier isEqualToString:ChiraModuleIdentifierClipboard] ? contentWidth - 34 : contentWidth;
-    [primary drawWithRect:NSMakeRect(contentX, contentTop + 3, titleWidth, 18)
+    [primary drawWithRect:titleRect
                   options:NSStringDrawingTruncatesLastVisibleLine
                attributes:primaryAttributes];
 
-    if ([module.identifier isEqualToString:ChiraModuleIdentifierClipboard]) {
+    if (isClipboardModule) {
         NSRect settingsRect = [self settingsButtonRectInIslandRect:rect];
         NSImage *gear = [NSImage imageWithSystemSymbolName:@"gearshape.fill" accessibilityDescription:@"Settings"];
         NSImageSymbolConfiguration *sizeConfig = [NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium];
@@ -647,7 +685,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
     if (module.style == ChiraModuleStyleList && module.items.count > 0) {
         [self drawClipboardItems:module.items
-                         inRect:NSMakeRect(contentX, contentTop + 42, contentWidth, NSHeight(rect) - contentTop - 52)
+                         inRect:NSMakeRect(contentX, [self clipboardListTopForIslandRect:rect horizontalPadding:horizontalPadding], contentWidth, NSHeight(rect) - contentTop - 52)
                     contentAlpha:contentAlpha];
         return;
     }
@@ -672,10 +710,8 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
         if (hovered) {
             CGFloat highlightHeight = MIN(24, rowHeight);
-            NSRect highlightRect = NSMakeRect(NSMinX(rowRect) - 8,
-                                              floor(NSMidY(rowRect) - highlightHeight / 2.0),
-                                              NSWidth(rowRect) + 16,
-                                              highlightHeight);
+            NSRect highlightRect = [self singleLineTextRectForRowRect:rowRect];
+            highlightRect = NSInsetRect(highlightRect, -8, -(highlightHeight - ChiraClipboardRowTextHeight) / 2.0);
             [[NSColor colorWithWhite:1 alpha:0.07 * contentAlpha * MAX(0.25, _hoverExpansion)] setFill];
             [[NSBezierPath bezierPathWithRoundedRect:highlightRect xRadius:8 yRadius:8] fill];
         }
@@ -688,7 +724,10 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
         if (expanded && item.image) {
             CGFloat thumbnailSize = 58;
-            NSRect thumbnailRect = NSMakeRect(NSMinX(rowRect), NSMinY(rowRect) + 10, thumbnailSize, thumbnailSize);
+            NSRect thumbnailRect = NSMakeRect(NSMinX(rowRect),
+                                              floor(NSMidY(rowRect) - thumbnailSize / 2.0),
+                                              thumbnailSize,
+                                              thumbnailSize);
             [[NSColor colorWithWhite:1 alpha:0.10 * contentAlpha] setFill];
             [[NSBezierPath bezierPathWithRoundedRect:thumbnailRect xRadius:8 yRadius:8] fill];
 
@@ -708,7 +747,10 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                                          hints:nil];
             }
 
-            [line drawWithRect:NSMakeRect(NSMaxX(thumbnailRect) + 14, NSMinY(rowRect) + 20, NSWidth(rowRect) - thumbnailSize - 14, 18)
+            NSRect imageLabelRect = [self singleLineTextRectForRowRect:rowRect];
+            imageLabelRect.origin.x = NSMaxX(thumbnailRect) + 14;
+            imageLabelRect.size.width = NSWidth(rowRect) - thumbnailSize - 14;
+            [line drawWithRect:imageLabelRect
                        options:NSStringDrawingTruncatesLastVisibleLine
                     attributes:itemAttributes];
         } else if (expanded && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
@@ -719,11 +761,15 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             expandedAttributes[NSParagraphStyleAttributeName] = paragraph;
             NSString *expandedLine = [self expandedLineForClipboardObject:object atIndex:index];
 
-            [expandedLine drawWithRect:NSMakeRect(NSMinX(rowRect), NSMinY(rowRect) + 7, NSWidth(rowRect), 45)
+            CGFloat expandedTextHeight = 45;
+            [expandedLine drawWithRect:NSMakeRect(NSMinX(rowRect),
+                                                  floor(NSMidY(rowRect) - expandedTextHeight / 2.0),
+                                                  NSWidth(rowRect),
+                                                  expandedTextHeight)
                                options:NSStringDrawingUsesLineFragmentOrigin
                             attributes:expandedAttributes];
         } else {
-            NSRect itemRect = NSMakeRect(NSMinX(rowRect), floor(NSMidY(rowRect) - 9), NSWidth(rowRect), 18);
+            NSRect itemRect = [self singleLineTextRectForRowRect:rowRect];
             [line drawWithRect:itemRect options:NSStringDrawingTruncatesLastVisibleLine attributes:itemAttributes];
         }
 
