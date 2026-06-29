@@ -39,6 +39,8 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     NSRect _lastInvalidatedIslandRect;
     NSInteger _pressedClipboardIndex;
     NSInteger _hoveredClipboardIndex;
+    CGFloat _hoverExpansion;
+    CGFloat _targetHoverExpansion;
     BOOL _pressedClipboardInside;
 }
 
@@ -56,6 +58,8 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     _lastInvalidatedIslandRect = NSZeroRect;
     _pressedClipboardIndex = -1;
     _hoveredClipboardIndex = -1;
+    _hoverExpansion = 0;
+    _targetHoverExpansion = 0;
     _pressedClipboardInside = NO;
     self.wantsLayer = YES;
     self.layer.backgroundColor = NSColor.clearColor.CGColor;
@@ -139,25 +143,39 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     }
 
     IslandModule *module = [self displayModule];
-    NSInteger index = [self clipboardItemIndexAtPoint:point forModule:module inIslandRect:islandRect];
-    if (index == _hoveredClipboardIndex) return;
+    NSInteger index = [self clipboardItemHoverIndexAtPoint:point forModule:module inIslandRect:islandRect];
+    if (index < 0) {
+        [self clearHoveredClipboardIndex];
+        return;
+    }
+    if (index == _hoveredClipboardIndex) {
+        if (_targetHoverExpansion < 1.0) {
+            _targetHoverExpansion = 1.0;
+            [self startAnimationTimerIfNeeded];
+            [self invalidateIslandDisplay];
+        }
+        return;
+    }
 
     _hoveredClipboardIndex = index;
+    _targetHoverExpansion = 1.0;
     [self preparePreviewForHoveredClipboardItem];
+    [self startAnimationTimerIfNeeded];
     [self invalidateIslandDisplay];
 }
 
 - (void)clearHoveredClipboardIndex {
-    if (_hoveredClipboardIndex < 0) return;
+    if (_hoveredClipboardIndex < 0 && _targetHoverExpansion <= 0) return;
 
-    _hoveredClipboardIndex = -1;
+    _targetHoverExpansion = 0;
+    [self startAnimationTimerIfNeeded];
     [self invalidateIslandDisplay];
 }
 
 - (void)setMode:(ChiraIslandMode)mode transientDuration:(NSTimeInterval)duration {
     self.mode = mode;
     if (mode == ChiraIslandModeIdle) {
-        _hoveredClipboardIndex = -1;
+        _targetHoverExpansion = 0;
     }
 
     [_collapseTimer invalidate];
@@ -286,8 +304,13 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     if (index != _hoveredClipboardIndex) return ChiraClipboardBaseRowHeight;
 
     ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
-    if (item.image) return ChiraClipboardImageHoverRowHeight;
-    return [self clipboardTextNeedsExpansion:object atIndex:index width:width] ? ChiraClipboardTextHoverRowHeight : ChiraClipboardBaseRowHeight;
+    CGFloat expandedHeight = ChiraClipboardBaseRowHeight;
+    if (item.image) {
+        expandedHeight = ChiraClipboardImageHoverRowHeight;
+    } else if ([self clipboardTextNeedsExpansion:object atIndex:index width:width]) {
+        expandedHeight = ChiraClipboardTextHoverRowHeight;
+    }
+    return ChiraClipboardBaseRowHeight + (expandedHeight - ChiraClipboardBaseRowHeight) * _hoverExpansion;
 }
 
 - (void)preparePreviewForHoveredClipboardItem {
@@ -308,6 +331,30 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             return index.integerValue;
         }
     }
+    return -1;
+}
+
+- (NSInteger)clipboardItemHoverIndexAtPoint:(NSPoint)point forModule:(IslandModule *)module inIslandRect:(NSRect)rect {
+    if (![module.identifier isEqualToString:ChiraModuleIdentifierClipboard] || module.items.count == 0) {
+        return -1;
+    }
+
+    CGFloat contentTop = NSMinY(rect) + MAX(self.topSafeInset + 12, 18);
+    CGFloat horizontalPadding = 40;
+    CGFloat rowTop = contentTop + 42;
+    CGFloat contentX = NSMinX(rect) + horizontalPadding;
+    CGFloat contentWidth = NSWidth(rect) - horizontalPadding * 2;
+    NSInteger count = MIN((NSInteger)module.items.count, 5);
+
+    for (NSInteger index = 0; index < count; index++) {
+        CGFloat rowHeight = [self clipboardRowHeightForObject:module.items[index] atIndex:index width:contentWidth];
+        NSRect rowRect = NSMakeRect(contentX - 10, rowTop + 1, contentWidth + 20, MAX(24, rowHeight - 2));
+        if (NSPointInRect(point, rowRect)) {
+            return index;
+        }
+        rowTop += rowHeight;
+    }
+
     return -1;
 }
 
@@ -355,6 +402,17 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         _progress = _targetProgress;
     } else {
         _progress += delta * 0.22;
+        needsNextFrame = YES;
+    }
+
+    CGFloat hoverDelta = _targetHoverExpansion - _hoverExpansion;
+    if (fabs(hoverDelta) < 0.01) {
+        _hoverExpansion = _targetHoverExpansion;
+        if (_hoverExpansion <= 0 && _targetHoverExpansion <= 0) {
+            _hoveredClipboardIndex = -1;
+        }
+    } else {
+        _hoverExpansion += hoverDelta * 0.24;
         needsNextFrame = YES;
     }
 
@@ -568,12 +626,13 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         id object = items[index];
         ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
         BOOL hovered = _hoveredClipboardIndex == index;
+        BOOL expanded = hovered && _hoverExpansion > 0.45;
         BOOL pressed = _pressedClipboardInside && _pressedClipboardIndex == index;
         CGFloat rowHeight = [self clipboardRowHeightForObject:object atIndex:index width:NSWidth(rect)];
         NSRect rowRect = NSMakeRect(NSMinX(rect), rowTop, NSWidth(rect), rowHeight);
 
         if (hovered) {
-            [[NSColor colorWithWhite:1 alpha:0.07 * contentAlpha] setFill];
+            [[NSColor colorWithWhite:1 alpha:0.07 * contentAlpha * MAX(0.25, _hoverExpansion)] setFill];
             [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(rowRect, -8, 2) xRadius:8 yRadius:8] fill];
         }
 
@@ -583,7 +642,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         };
         NSString *line = [self displayLineForClipboardObject:object atIndex:index];
 
-        if (hovered && item.image) {
+        if (expanded && item.image) {
             CGFloat thumbnailSize = 58;
             NSRect thumbnailRect = NSMakeRect(NSMinX(rowRect), NSMinY(rowRect) + 10, thumbnailSize, thumbnailSize);
             [[NSColor colorWithWhite:1 alpha:0.10 * contentAlpha] setFill];
@@ -608,16 +667,16 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             [line drawWithRect:NSMakeRect(NSMaxX(thumbnailRect) + 14, NSMinY(rowRect) + 20, NSWidth(rowRect) - thumbnailSize - 14, 18)
                        options:NSStringDrawingTruncatesLastVisibleLine
                     attributes:itemAttributes];
-        } else if (hovered && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
+        } else if (expanded && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
             NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
-            paragraph.lineBreakMode = NSLineBreakByTruncatingTail;
+            paragraph.lineBreakMode = NSLineBreakByCharWrapping;
             paragraph.lineSpacing = 1.5;
             NSMutableDictionary *expandedAttributes = [itemAttributes mutableCopy];
             expandedAttributes[NSParagraphStyleAttributeName] = paragraph;
             NSString *expandedLine = [self expandedLineForClipboardObject:object atIndex:index];
 
             [expandedLine drawWithRect:NSMakeRect(NSMinX(rowRect), NSMinY(rowRect) + 7, NSWidth(rowRect), 45)
-                               options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingTruncatesLastVisibleLine
+                               options:NSStringDrawingUsesLineFragmentOrigin
                             attributes:expandedAttributes];
         } else {
             NSRect itemRect = NSMakeRect(NSMinX(rowRect), NSMinY(rowRect) + 5, NSWidth(rowRect), 18);

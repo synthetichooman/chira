@@ -24,6 +24,19 @@
         item.dataValue = imageData;
         item.pasteboardType = imageType;
         item.image = YES;
+        item.previewImage = [[NSImage alloc] initWithData:imageData];
+        item.displayText = @"Image copied";
+        return item;
+    }
+
+    NSImage *pasteboardImage = [[NSImage alloc] initWithPasteboard:pasteboard];
+    NSData *pasteboardImageData = pasteboardImage.TIFFRepresentation;
+    if (pasteboardImageData.length) {
+        ClipboardHistoryItem *item = [ClipboardHistoryItem new];
+        item.dataValue = pasteboardImageData;
+        item.pasteboardType = NSPasteboardTypeTIFF;
+        item.previewImage = pasteboardImage;
+        item.image = YES;
         item.displayText = @"Image copied";
         return item;
     }
