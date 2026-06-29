@@ -1,5 +1,9 @@
 #import "IslandView.h"
 
+static const CGFloat ChiraMacBookPro14NotchWidth = 210.0;
+static const CGFloat ChiraIngestPulseHorizontalStretch = 12.0;
+static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
+
 @implementation IslandView {
     NSTrackingArea *_trackingArea;
     NSTimer *_animationTimer;
@@ -235,7 +239,8 @@
 }
 
 - (NSRect)currentIslandRect {
-    CGFloat hiddenWidth = self.notchWidth > 0 ? MAX(1, self.notchWidth - 12) : 160;
+    CGFloat detectedNotchWidth = self.notchWidth > 0 ? self.notchWidth : ChiraMacBookPro14NotchWidth;
+    CGFloat hiddenWidth = MAX(ChiraMacBookPro14NotchWidth, detectedNotchWidth);
     CGFloat hiddenHeight = self.topSafeInset > 0 ? MAX(1, self.topSafeInset - 2) : 4;
     CGFloat expandedWidth = 470;
     CGFloat expandedHeight = hiddenHeight + [self expandedContentHeight];
@@ -243,7 +248,9 @@
     CGFloat height = hiddenHeight + (expandedHeight - hiddenHeight) * _progress;
 
     CGFloat hiddenBias = 1.0 - MIN(1.0, _progress * 1.7);
-    CGFloat pulseOffsetY = (9 * hiddenBias + 4 * (1.0 - hiddenBias)) * _ingestPulse;
+    CGFloat pulseWidth = ChiraIngestPulseHorizontalStretch * _ingestPulse * hiddenBias;
+    CGFloat pulseOffsetY = (ChiraIngestPulseVerticalDrop * hiddenBias + 4 * (1.0 - hiddenBias)) * _ingestPulse;
+    width += pulseWidth;
 
     return NSMakeRect((NSWidth(self.bounds) - width) / 2.0, pulseOffsetY, width, height);
 }
