@@ -4,7 +4,6 @@ static const CGFloat ChiraMacBookPro14NotchWidth = 210.0;
 static const CGFloat ChiraFloatingHiddenWidth = 168.0;
 static const CGFloat ChiraFloatingHiddenHeight = 30.0;
 static const CGFloat ChiraFloatingTopMargin = 8.0;
-static const CGFloat ChiraIngestPulseHorizontalStretch = 12.0;
 static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
 
 @implementation IslandView {
@@ -252,9 +251,7 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
     CGFloat height = hiddenHeight + (expandedHeight - hiddenHeight) * _progress;
 
     CGFloat hiddenBias = 1.0 - MIN(1.0, _progress * 1.7);
-    CGFloat pulseWidth = ChiraIngestPulseHorizontalStretch * _ingestPulse * hiddenBias;
     CGFloat pulseHeight = (ChiraIngestPulseVerticalDrop * hiddenBias + 4 * (1.0 - hiddenBias)) * _ingestPulse;
-    width += pulseWidth;
     height += pulseHeight;
 
     CGFloat baseY = (self.hasNotch || _ingestPulse > 0.01) ? 0 : ChiraFloatingTopMargin;
