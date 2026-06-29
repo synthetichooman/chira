@@ -14,6 +14,7 @@ static const CGFloat ChiraHeaderTextHeight = 18.0;
 static const CGFloat ChiraHeaderButtonSize = 24.0;
 static const CGFloat ChiraHeaderIconTextBaselineOffset = -13.0;
 static const CGFloat ChiraClipboardRowTextHeight = 18.0;
+static const CGFloat ChiraClipboardHoverTextBaselineOffset = -13.0;
 static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
 
 static CGFloat ChiraSmoothStep(CGFloat value) {
@@ -320,6 +321,13 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                       ChiraClipboardRowTextHeight);
 }
 
+- (NSRect)clipboardHoverRectForRowRect:(NSRect)rowRect height:(CGFloat)height horizontalInset:(CGFloat)horizontalInset {
+    NSRect hoverRect = [self singleLineTextRectForRowRect:rowRect];
+    hoverRect = NSInsetRect(hoverRect, -horizontalInset, -(height - ChiraClipboardRowTextHeight) / 2.0);
+    hoverRect.origin.y += ChiraClipboardHoverTextBaselineOffset;
+    return hoverRect;
+}
+
 - (ClipboardHistoryItem *)clipboardItemFromObject:(id)object {
     return [object isKindOfClass:ClipboardHistoryItem.class] ? object : nil;
 }
@@ -438,10 +446,9 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         CGFloat targetWidth = MIN(contentWidth, MAX(textWidth + 8, [self clipboardItemFromObject:object].image ? 220 : 0));
         NSRect rowRect = NSMakeRect(contentX - 4, rowTop, targetWidth, rowHeight);
         CGFloat targetHeight = MIN(MAX(22, rowHeight - 6), rowHeight);
-        NSRect targetRect = [self singleLineTextRectForRowRect:rowRect];
+        NSRect targetRect = [self clipboardHoverRectForRowRect:rowRect height:targetHeight horizontalInset:0];
         targetRect.origin.x = NSMinX(rowRect);
         targetRect.size.width = NSWidth(rowRect);
-        targetRect = NSInsetRect(targetRect, 0, -(targetHeight - ChiraClipboardRowTextHeight) / 2.0);
         [targets addObject:@{
             @"rect": [NSValue valueWithRect:targetRect],
             @"index": @(index)
@@ -711,8 +718,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
         if (hovered) {
             CGFloat highlightHeight = MIN(24, rowHeight);
-            NSRect highlightRect = [self singleLineTextRectForRowRect:rowRect];
-            highlightRect = NSInsetRect(highlightRect, -8, -(highlightHeight - ChiraClipboardRowTextHeight) / 2.0);
+            NSRect highlightRect = [self clipboardHoverRectForRowRect:rowRect height:highlightHeight horizontalInset:8];
             [[NSColor colorWithWhite:1 alpha:0.07 * contentAlpha * MAX(0.25, _hoverExpansion)] setFill];
             [[NSBezierPath bezierPathWithRoundedRect:highlightRect xRadius:8 yRadius:8] fill];
         }
