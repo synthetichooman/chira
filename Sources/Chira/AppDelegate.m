@@ -1,15 +1,12 @@
 #import "AppDelegate.h"
 #import "ClipboardHistoryItem.h"
 
-static const NSTimeInterval ChiraClipboardRevealDelay = 0.34;
-
 @implementation AppDelegate {
     NSPanel *_panel;
     IslandView *_islandView;
     NSStatusItem *_statusItem;
     NSTimer *_pointerTimer;
     NSTimer *_clipboardTimer;
-    NSTimer *_clipboardRevealTimer;
     NSInteger _lastClipboardChangeCount;
     NSMutableArray<ClipboardHistoryItem *> *_clipboardHistory;
     NSRect _notchHotZone;
@@ -45,7 +42,6 @@ static const NSTimeInterval ChiraClipboardRevealDelay = 0.34;
 - (void)applicationWillTerminate:(NSNotification *)notification {
     [_pointerTimer invalidate];
     [_clipboardTimer invalidate];
-    [_clipboardRevealTimer invalidate];
 }
 
 - (void)setupPanel {
@@ -153,18 +149,6 @@ static const NSTimeInterval ChiraClipboardRevealDelay = 0.34;
     [self addClipboardHistoryItem:item];
     [_panel orderFrontRegardless];
     [_islandView playClipboardIngestPulse];
-
-    [_clipboardRevealTimer invalidate];
-    _clipboardRevealTimer = [NSTimer scheduledTimerWithTimeInterval:ChiraClipboardRevealDelay
-                                                             target:self
-                                                           selector:@selector(revealClipboardIslandAfterPulse)
-                                                           userInfo:nil
-                                                            repeats:NO];
-}
-
-- (void)revealClipboardIslandAfterPulse {
-    _clipboardRevealTimer = nil;
-    [_islandView setMode:ChiraIslandModeClipboard transientDuration:2.3];
 }
 
 - (void)syncModules {
