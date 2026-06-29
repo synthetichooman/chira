@@ -6,16 +6,17 @@ static const CGFloat ChiraFloatingHiddenHeight = 30.0;
 static const CGFloat ChiraFloatingTopMargin = 8.0;
 static const CGFloat ChiraHiddenNotchCornerRadius = 11.0;
 static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
+static const NSTimeInterval ChiraIngestPulseDuration = 0.30;
 
 @implementation IslandView {
     NSTrackingArea *_trackingArea;
     NSTimer *_animationTimer;
     NSTimer *_collapseTimer;
-    NSTimer *_ingestPulseTimer;
     CGFloat _progress;
     CGFloat _targetProgress;
     CGFloat _ingestPulse;
     NSTimeInterval _ingestPulseStartTime;
+    NSRect _lastInvalidatedIslandRect;
     NSInteger _pressedClipboardIndex;
     BOOL _pressedClipboardInside;
 }
@@ -31,6 +32,7 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
     _notchWidth = 0;
     _hasNotch = NO;
     _ingestPulse = 0;
+    _lastInvalidatedIslandRect = NSZeroRect;
     _pressedClipboardIndex = -1;
     _pressedClipboardInside = NO;
     self.wantsLayer = YES;
@@ -58,7 +60,7 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
     if (index >= 0) {
         _pressedClipboardIndex = index;
         _pressedClipboardInside = YES;
-        [self setNeedsDisplay:YES];
+        [self invalidateIslandDisplay];
     }
 }
 
@@ -72,7 +74,7 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
     BOOL inside = index == _pressedClipboardIndex;
     if (_pressedClipboardInside != inside) {
         _pressedClipboardInside = inside;
-        [self setNeedsDisplay:YES];
+        [self invalidateIslandDisplay];
     }
 }
 
@@ -87,7 +89,7 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
 
     _pressedClipboardIndex = -1;
     _pressedClipboardInside = NO;
-    [self setNeedsDisplay:YES];
+    [self invalidateIslandDisplay];
 
     if (releaseIndex == pressedIndex) {
         [self.delegate islandView:self didSelectClipboardItemAtIndex:pressedIndex];
@@ -109,38 +111,15 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
     }
 
     [self updateTargetProgress];
-    [self setNeedsDisplay:YES];
+    [self invalidateIslandDisplay];
 }
 
 - (void)playClipboardIngestPulse {
     _ingestPulseStartTime = NSDate.timeIntervalSinceReferenceDate;
     _ingestPulse = 0.0;
 
-    [_ingestPulseTimer invalidate];
-    _ingestPulseTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
-                                                         target:self
-                                                       selector:@selector(ingestPulseTick)
-                                                       userInfo:nil
-                                                        repeats:YES];
-    [self setNeedsDisplay:YES];
-}
-
-- (void)ingestPulseTick {
-    NSTimeInterval elapsed = NSDate.timeIntervalSinceReferenceDate - _ingestPulseStartTime;
-    CGFloat duration = 0.30;
-    CGFloat t = MIN(1.0, MAX(0.0, elapsed / duration));
-
-    CGFloat quickT = pow(t, 0.72);
-    CGFloat down = sin(quickT * M_PI);
-    CGFloat rebound = 0.20 * sin(t * M_PI * 4.8) * (1.0 - t);
-    _ingestPulse = MAX(0.0, down + rebound);
-
-    if (t >= 1.0) {
-        _ingestPulse = 0;
-        [_ingestPulseTimer invalidate];
-        _ingestPulseTimer = nil;
-    }
-    [self setNeedsDisplay:YES];
+    [self startAnimationTimerIfNeeded];
+    [self invalidateIslandDisplay];
 }
 
 - (void)collapseTransientMode {
@@ -148,17 +127,22 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
         self.mode = ChiraIslandModeIdle;
     }
     [self updateTargetProgress];
-    [self setNeedsDisplay:YES];
+    [self invalidateIslandDisplay];
 }
 
 - (void)updateTargetProgress {
     _targetProgress = (self.pointerNearNotch || self.hovering || self.mode != ChiraIslandModeIdle) ? 1.0 : 0.0;
+    [self startAnimationTimerIfNeeded];
+}
+
+- (void)startAnimationTimerIfNeeded {
     if (!_animationTimer) {
-        _animationTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
-                                                           target:self
-                                                         selector:@selector(animationTick)
-                                                         userInfo:nil
-                                                          repeats:YES];
+        _animationTimer = [NSTimer timerWithTimeInterval:1.0 / 60.0
+                                                  target:self
+                                                selector:@selector(animationTick)
+                                                userInfo:nil
+                                                 repeats:YES];
+        [NSRunLoop.mainRunLoop addTimer:_animationTimer forMode:NSRunLoopCommonModes];
     }
 }
 
@@ -170,7 +154,21 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
         self.mode = ChiraIslandModeIdle;
     }
     [self updateTargetProgress];
-    [self setNeedsDisplay:YES];
+    [self invalidateIslandDisplay];
+}
+
+- (void)invalidateIslandDisplay {
+    NSRect currentRect = NSInsetRect([self currentIslandRect], -36, -36);
+    currentRect = NSIntersectionRect(currentRect, self.bounds);
+
+    if (!NSIsEmptyRect(_lastInvalidatedIslandRect)) {
+        [self setNeedsDisplayInRect:_lastInvalidatedIslandRect];
+    }
+    if (!NSIsEmptyRect(currentRect)) {
+        [self setNeedsDisplayInRect:currentRect];
+    }
+
+    _lastInvalidatedIslandRect = currentRect;
 }
 
 - (IslandModule *)displayModule {
@@ -232,15 +230,39 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
 }
 
 - (void)animationTick {
+    BOOL needsNextFrame = NO;
+
     CGFloat delta = _targetProgress - _progress;
     if (fabs(delta) < 0.01) {
         _progress = _targetProgress;
-        [_animationTimer invalidate];
-        _animationTimer = nil;
     } else {
         _progress += delta * 0.22;
+        needsNextFrame = YES;
     }
-    [self setNeedsDisplay:YES];
+
+    if (_ingestPulseStartTime > 0) {
+        NSTimeInterval elapsed = NSDate.timeIntervalSinceReferenceDate - _ingestPulseStartTime;
+        CGFloat t = MIN(1.0, MAX(0.0, elapsed / ChiraIngestPulseDuration));
+
+        CGFloat quickT = pow(t, 0.72);
+        CGFloat down = sin(quickT * M_PI);
+        CGFloat rebound = 0.20 * sin(t * M_PI * 4.8) * (1.0 - t);
+        _ingestPulse = MAX(0.0, down + rebound);
+
+        if (t >= 1.0) {
+            _ingestPulse = 0;
+            _ingestPulseStartTime = 0;
+        } else {
+            needsNextFrame = YES;
+        }
+    }
+
+    if (!needsNextFrame) {
+        [_animationTimer invalidate];
+        _animationTimer = nil;
+    }
+
+    [self invalidateIslandDisplay];
 }
 
 - (NSRect)currentIslandRect {

@@ -23,7 +23,7 @@
     _lastClipboardChangeCount = NSPasteboard.generalPasteboard.changeCount;
     [self syncModules];
 
-    _pointerTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
+    _pointerTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 30.0
                                                      target:self
                                                    selector:@selector(pointerTimerTick)
                                                    userInfo:nil
