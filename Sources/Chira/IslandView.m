@@ -253,11 +253,12 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
 
     CGFloat hiddenBias = 1.0 - MIN(1.0, _progress * 1.7);
     CGFloat pulseWidth = ChiraIngestPulseHorizontalStretch * _ingestPulse * hiddenBias;
-    CGFloat pulseOffsetY = (ChiraIngestPulseVerticalDrop * hiddenBias + 4 * (1.0 - hiddenBias)) * _ingestPulse;
+    CGFloat pulseHeight = (ChiraIngestPulseVerticalDrop * hiddenBias + 4 * (1.0 - hiddenBias)) * _ingestPulse;
     width += pulseWidth;
+    height += pulseHeight;
 
-    CGFloat baseY = self.hasNotch ? 0 : ChiraFloatingTopMargin;
-    return NSMakeRect((NSWidth(self.bounds) - width) / 2.0, baseY + pulseOffsetY, width, height);
+    CGFloat baseY = (self.hasNotch || _ingestPulse > 0.01) ? 0 : ChiraFloatingTopMargin;
+    return NSMakeRect((NSWidth(self.bounds) - width) / 2.0, baseY, width, height);
 }
 
 - (CGFloat)expandedContentHeight {
@@ -316,7 +317,7 @@ static const CGFloat ChiraIngestPulseVerticalDrop = 11.0;
 }
 
 - (NSBezierPath *)islandShapeForRect:(NSRect)rect bottomRadius:(CGFloat)radius topShoulderRadius:(CGFloat)topShoulderRadius {
-    if (self.hasNotch) {
+    if (self.hasNotch || _ingestPulse > 0.01) {
         return [self topAttachedPathForRect:rect bottomRadius:radius topShoulderRadius:topShoulderRadius];
     }
 
