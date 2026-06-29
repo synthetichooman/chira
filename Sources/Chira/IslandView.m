@@ -4,8 +4,11 @@
     NSTrackingArea *_trackingArea;
     NSTimer *_animationTimer;
     NSTimer *_collapseTimer;
+    NSTimer *_ingestPulseTimer;
     CGFloat _progress;
     CGFloat _targetProgress;
+    CGFloat _ingestPulse;
+    NSTimeInterval _ingestPulseStartTime;
     NSInteger _pressedClipboardIndex;
     BOOL _pressedClipboardInside;
 }
@@ -19,6 +22,7 @@
     _modules = @[];
     _topSafeInset = 6;
     _notchWidth = 0;
+    _ingestPulse = 0;
     _pressedClipboardIndex = -1;
     _pressedClipboardInside = NO;
     self.wantsLayer = YES;
@@ -97,6 +101,36 @@
     }
 
     [self updateTargetProgress];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)playClipboardIngestPulse {
+    _ingestPulseStartTime = NSDate.timeIntervalSinceReferenceDate;
+    _ingestPulse = 0.0;
+
+    [_ingestPulseTimer invalidate];
+    _ingestPulseTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 60.0
+                                                         target:self
+                                                       selector:@selector(ingestPulseTick)
+                                                       userInfo:nil
+                                                        repeats:YES];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)ingestPulseTick {
+    NSTimeInterval elapsed = NSDate.timeIntervalSinceReferenceDate - _ingestPulseStartTime;
+    CGFloat duration = 0.48;
+    CGFloat t = MIN(1.0, MAX(0.0, elapsed / duration));
+
+    CGFloat intake = sin(t * M_PI);
+    CGFloat rebound = 0.18 * sin(t * M_PI * 3.0) * (1.0 - t);
+    _ingestPulse = MAX(0.0, intake + rebound);
+
+    if (t >= 1.0) {
+        _ingestPulse = 0;
+        [_ingestPulseTimer invalidate];
+        _ingestPulseTimer = nil;
+    }
     [self setNeedsDisplay:YES];
 }
 
@@ -207,6 +241,13 @@
     CGFloat expandedHeight = hiddenHeight + [self expandedContentHeight];
     CGFloat width = hiddenWidth + (expandedWidth - hiddenWidth) * _progress;
     CGFloat height = hiddenHeight + (expandedHeight - hiddenHeight) * _progress;
+
+    CGFloat hiddenBias = 1.0 - MIN(1.0, _progress * 1.7);
+    CGFloat pulseWidth = 24 * _ingestPulse * hiddenBias;
+    CGFloat pulseHeight = (10 * hiddenBias + 5 * (1.0 - hiddenBias)) * _ingestPulse;
+    width += pulseWidth;
+    height += pulseHeight;
+
     return NSMakeRect((NSWidth(self.bounds) - width) / 2.0, 0, width, height);
 }
 
@@ -269,17 +310,18 @@
     [NSColor.clearColor setFill];
     NSRectFill(self.bounds);
 
-    if (_progress < 0.01) return;
+    if (_progress < 0.01 && _ingestPulse < 0.01) return;
 
     NSRect islandRect = [self currentIslandRect];
-    CGFloat radius = 18 + (30 - 18) * _progress;
-    CGFloat topShoulderRadius = 16 * _progress;
+    CGFloat visualProgress = MAX(_progress, _ingestPulse * 0.28);
+    CGFloat radius = 18 + (30 - 18) * visualProgress;
+    CGFloat topShoulderRadius = 16 * visualProgress;
     NSBezierPath *shape = [self topAttachedPathForRect:islandRect bottomRadius:radius topShoulderRadius:topShoulderRadius];
 
     NSShadow *shadow = [NSShadow new];
-    shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.34 * _progress];
-    shadow.shadowBlurRadius = 24 * _progress;
-    shadow.shadowOffset = NSMakeSize(0, -10);
+    shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.34 * visualProgress];
+    shadow.shadowBlurRadius = 24 * visualProgress;
+    shadow.shadowOffset = NSMakeSize(0, -10 * visualProgress);
 
     [NSGraphicsContext saveGraphicsState];
     [shadow set];
@@ -287,7 +329,7 @@
     [shape fill];
     [NSGraphicsContext restoreGraphicsState];
 
-    [[NSColor colorWithWhite:1 alpha:0.08 * _progress] setStroke];
+    [[NSColor colorWithWhite:1 alpha:0.08 * visualProgress] setStroke];
     NSBezierPath *border = [self topAttachedPathForRect:NSInsetRect(islandRect, 0.5, 0.5)
                                           bottomRadius:radius
                                      topShoulderRadius:MAX(0, topShoulderRadius - 0.5)];

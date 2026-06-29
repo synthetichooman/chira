@@ -20,5 +20,6 @@
 @property (nonatomic) CGFloat notchWidth;
 
 - (void)setMode:(ChiraIslandMode)mode transientDuration:(NSTimeInterval)duration;
+- (void)playClipboardIngestPulse;
 - (BOOL)containsInteractivePoint:(NSPoint)point;
 @end

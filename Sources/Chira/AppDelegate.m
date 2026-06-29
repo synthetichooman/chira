@@ -147,6 +147,7 @@
 
     [self addClipboardHistoryItem:item];
     [_panel orderFrontRegardless];
+    [_islandView playClipboardIngestPulse];
     [_islandView setMode:ChiraIslandModeClipboard transientDuration:2.3];
 }
 
