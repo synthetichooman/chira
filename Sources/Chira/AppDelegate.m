@@ -138,6 +138,8 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     _settingsPanel.opaque = NO;
     _settingsPanel.backgroundColor = NSColor.clearColor;
     _settingsPanel.hasShadow = YES;
+    _settingsPanel.ignoresMouseEvents = NO;
+    _settingsPanel.movableByWindowBackground = YES;
     _settingsPanel.level = CGWindowLevelForKey(kCGStatusWindowLevelKey);
     _settingsPanel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
         NSWindowCollectionBehaviorFullScreenAuxiliary |
@@ -208,6 +210,15 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     CGFloat y = NSMaxY(parentFrame) - size.height - 112;
     [_settingsPanel setFrame:NSMakeRect(x, y, size.width, size.height) display:YES];
     [_settingsPanel orderFrontRegardless];
+}
+
+- (void)toggleSettingsPanel {
+    if (_settingsPanel.isVisible) {
+        [_settingsPanel orderOut:nil];
+        return;
+    }
+
+    [self showSettingsPanel];
 }
 
 - (void)settingsCountStepperChanged:(NSStepper *)sender {
@@ -416,7 +427,7 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
 
 - (void)islandViewDidRequestSettings:(IslandView *)view {
     (void)view;
-    [self showSettingsPanel];
+    [self toggleSettingsPanel];
 }
 
 @end

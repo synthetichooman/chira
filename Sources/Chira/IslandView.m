@@ -621,7 +621,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         [gear drawInRect:imageRect
                 fromRect:NSZeroRect
                operation:NSCompositingOperationSourceOver
-                fraction:0.48 * contentAlpha
+                fraction:0.62 * contentAlpha
           respectFlipped:YES
                    hints:nil];
     }
