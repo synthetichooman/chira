@@ -31,6 +31,8 @@ It runs as an accessory app, so it will not appear in the Dock. Use the menu bar
 - Text clipboard items can be clicked to copy again
 - Image clipboard items are stored as PNG/TIFF data and can be clicked to copy again
 - Image hover previews are off by default to keep memory lower
+- Settings shows the app version/build and local git revision
+- First launch for a version adds patch notes to the top of Chira's clipboard history
 
 ## Source Layout
 

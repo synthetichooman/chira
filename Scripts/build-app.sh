@@ -9,6 +9,14 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 cd "$ROOT_DIR"
 
+GIT_SHA="unknown"
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || printf unknown)"
+    if ! git diff --quiet --ignore-submodules HEAD --; then
+        GIT_SHA="${GIT_SHA}+"
+    fi
+fi
+
 mkdir -p "$ROOT_DIR/.build/release"
 clang \
     -fobjc-arc \
@@ -16,6 +24,7 @@ clang \
     -Wextra \
     -O2 \
     -mmacosx-version-min=14.0 \
+    -DCHIRA_GIT_SHA=\"${GIT_SHA}\" \
     -o "$ROOT_DIR/.build/release/Chira" \
     "$ROOT_DIR"/Sources/Chira/*.m \
     -framework AppKit \

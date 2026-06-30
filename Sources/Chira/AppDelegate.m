@@ -2,6 +2,10 @@
 #import "ClipboardHistoryItem.h"
 #import <CoreGraphics/CoreGraphics.h>
 
+#ifndef CHIRA_GIT_SHA
+#define CHIRA_GIT_SHA "unknown"
+#endif
+
 static const NSTimeInterval ChiraClipboardIngestDelay = 0.42;
 static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
 static const NSTimeInterval ChiraClipboardPollingInterval = 0.50;
@@ -9,6 +13,7 @@ static const NSTimeInterval ChiraPointerPollingActiveInterval = 1.0 / 30.0;
 static const NSTimeInterval ChiraPointerPollingIdleInterval = 0.12;
 static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboardItems";
 static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard";
+static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion";
 
 @implementation AppDelegate {
     NSPanel *_panel;
@@ -21,6 +26,7 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     NSTextField *_settingsCountValueLabel;
     NSStepper *_settingsCountStepper;
     NSButton *_settingsImagePreviewCheckbox;
+    NSTextField *_settingsVersionLabel;
     dispatch_queue_t _clipboardIngestQueue;
     NSTimeInterval _clipboardPollingResumeTime;
     NSInteger _lastClipboardChangeCount;
@@ -46,6 +52,7 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     [self setupStatusItem];
 
     _lastClipboardChangeCount = NSPasteboard.generalPasteboard.changeCount;
+    [self insertPatchNotesIfNeeded];
     [self syncClipboardItems];
 
     [self schedulePointerTimerActive:NO];
@@ -108,6 +115,7 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
 
     NSMenu *menu = [NSMenu new];
     [menu addItem:[[NSMenuItem alloc] initWithTitle:@"Show Chira" action:@selector(showIsland) keyEquivalent:@""]];
+    [menu addItem:[[NSMenuItem alloc] initWithTitle:@"Settings" action:@selector(showSettingsPanel) keyEquivalent:@","]];
     [menu addItem:[[NSMenuItem alloc] initWithTitle:@"Recenter" action:@selector(recenterIsland) keyEquivalent:@""]];
     [menu addItem:NSMenuItem.separatorItem];
     [menu addItem:[[NSMenuItem alloc] initWithTitle:@"Save Clipboard Text" action:@selector(saveClipboardText) keyEquivalent:@""]];
@@ -147,6 +155,50 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     return [NSUserDefaults.standardUserDefaults boolForKey:ChiraPreviewImageClipboardKey];
 }
 
+- (NSString *)appVersionIdentifier {
+    NSDictionary *info = NSBundle.mainBundle.infoDictionary;
+    NSString *version = info[@"CFBundleShortVersionString"] ?: @"0.1";
+    NSString *build = info[@"CFBundleVersion"] ?: @"1";
+    return [NSString stringWithFormat:@"%@-%@", version, build];
+}
+
+- (NSString *)appVersionDisplayString {
+    NSDictionary *info = NSBundle.mainBundle.infoDictionary;
+    NSString *version = info[@"CFBundleShortVersionString"] ?: @"0.1";
+    NSString *build = info[@"CFBundleVersion"] ?: @"1";
+    NSString *gitSHA = @(CHIRA_GIT_SHA);
+    if (!gitSHA.length || [gitSHA isEqualToString:@"unknown"]) {
+        return [NSString stringWithFormat:@"Version %@ (%@)", version, build];
+    }
+    return [NSString stringWithFormat:@"Version %@ (%@, %@)", version, build, gitSHA];
+}
+
+- (NSString *)patchNotesText {
+    return [NSString stringWithFormat:
+        @"Chira %@ patch notes\n"
+        @"- Clipboard-only MVP\n"
+        @"- Lighter background clipboard ingest\n"
+        @"- Lower idle polling\n"
+        @"- Better top-center fallback for non-notch displays\n"
+        @"- Settings now shows version info",
+        [self appVersionDisplayString]];
+}
+
+- (void)insertPatchNotesIfNeeded {
+    NSString *versionIdentifier = [self appVersionIdentifier];
+    NSString *shownVersion = [NSUserDefaults.standardUserDefaults stringForKey:ChiraLastPatchNotesVersionKey];
+    if ([shownVersion isEqualToString:versionIdentifier]) return;
+
+    ClipboardHistoryItem *item = [ClipboardHistoryItem textItemWithString:[self patchNotesText]];
+    if (item) {
+        [_clipboardHistory insertObject:item atIndex:0];
+        while (_clipboardHistory.count > 8) {
+            [_clipboardHistory removeLastObject];
+        }
+    }
+    [NSUserDefaults.standardUserDefaults setObject:versionIdentifier forKey:ChiraLastPatchNotesVersionKey];
+}
+
 - (NSTextField *)settingsLabelWithString:(NSString *)string frame:(NSRect)frame {
     NSTextField *label = [NSTextField labelWithString:string];
     label.frame = frame;
@@ -164,10 +216,18 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     return label;
 }
 
+- (NSBox *)settingsDividerWithFrame:(NSRect)frame {
+    NSBox *divider = [[NSBox alloc] initWithFrame:frame];
+    divider.boxType = NSBoxCustom;
+    divider.transparent = NO;
+    divider.fillColor = NSColor.separatorColor;
+    return divider;
+}
+
 - (void)setupSettingsPanelIfNeeded {
     if (_settingsPanel) return;
 
-    NSSize panelSize = NSMakeSize(300, 206);
+    NSSize panelSize = NSMakeSize(320, 244);
     _settingsPanel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
                                                 styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                                                   backing:NSBackingStoreBuffered
@@ -191,23 +251,29 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     _settingsPanel.contentView = contentView;
 
     NSTextField *title = [NSTextField labelWithString:@"Chira"];
-    title.frame = NSMakeRect(20, 168, 180, 22);
-    title.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
+    title.frame = NSMakeRect(20, 206, 200, 24);
+    title.font = [NSFont systemFontOfSize:17 weight:NSFontWeightSemibold];
     title.textColor = NSColor.labelColor;
     [contentView addSubview:title];
 
-    NSTextField *subtitle = [NSTextField labelWithString:@"Clipboard island settings"];
-    subtitle.frame = NSMakeRect(20, 149, 210, 18);
+    _settingsVersionLabel = [self settingsLabelWithString:@"" frame:NSMakeRect(20, 185, 280, 18)];
+    _settingsVersionLabel.font = [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightRegular];
+    [contentView addSubview:_settingsVersionLabel];
+
+    [contentView addSubview:[self settingsDividerWithFrame:NSMakeRect(20, 170, 280, 1)]];
+
+    NSTextField *subtitle = [NSTextField labelWithString:@"Clipboard"];
+    subtitle.frame = NSMakeRect(20, 142, 210, 18);
     subtitle.font = [NSFont systemFontOfSize:12 weight:NSFontWeightRegular];
     subtitle.textColor = NSColor.secondaryLabelColor;
     [contentView addSubview:subtitle];
 
-    [contentView addSubview:[self settingsLabelWithString:@"Visible clipboard items" frame:NSMakeRect(20, 116, 170, 18)]];
+    [contentView addSubview:[self settingsLabelWithString:@"Visible items" frame:NSMakeRect(20, 114, 170, 18)]];
 
-    _settingsCountValueLabel = [self settingsValueLabelWithString:@"" frame:NSMakeRect(202, 114, 28, 22)];
+    _settingsCountValueLabel = [self settingsValueLabelWithString:@"" frame:NSMakeRect(220, 112, 28, 22)];
     [contentView addSubview:_settingsCountValueLabel];
 
-    _settingsCountStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(242, 110, 18, 28)];
+    _settingsCountStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(264, 108, 18, 28)];
     _settingsCountStepper.minValue = 1;
     _settingsCountStepper.maxValue = 8;
     _settingsCountStepper.increment = 1;
@@ -218,19 +284,15 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     _settingsImagePreviewCheckbox = [NSButton checkboxWithTitle:@"Show image previews on hover"
                                                          target:self
                                                          action:@selector(settingsImagePreviewChanged:)];
-    _settingsImagePreviewCheckbox.frame = NSMakeRect(16, 80, 260, 24);
+    _settingsImagePreviewCheckbox.frame = NSMakeRect(16, 78, 280, 24);
     _settingsImagePreviewCheckbox.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
     [contentView addSubview:_settingsImagePreviewCheckbox];
 
-    NSBox *divider = [[NSBox alloc] initWithFrame:NSMakeRect(20, 62, 260, 1)];
-    divider.boxType = NSBoxCustom;
-    divider.transparent = NO;
-    divider.fillColor = NSColor.separatorColor;
-    [contentView addSubview:divider];
+    [contentView addSubview:[self settingsDividerWithFrame:NSMakeRect(20, 62, 280, 1)]];
 
-    [contentView addSubview:[self settingsLabelWithString:@"Developer: kimminpyo" frame:NSMakeRect(20, 34, 240, 18)]];
+    [contentView addSubview:[self settingsLabelWithString:@"Developer  kimminpyo" frame:NSMakeRect(20, 35, 260, 18)]];
 
-    NSTextField *github = [self settingsLabelWithString:@"GitHub: synthetichooman/chira" frame:NSMakeRect(20, 12, 250, 18)];
+    NSTextField *github = [self settingsLabelWithString:@"GitHub  synthetichooman/chira" frame:NSMakeRect(20, 13, 270, 18)];
     github.selectable = YES;
     [contentView addSubview:github];
 }
@@ -239,6 +301,7 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     NSInteger count = [self maxVisibleClipboardItems];
     _settingsCountStepper.integerValue = count;
     _settingsCountValueLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)count];
+    _settingsVersionLabel.stringValue = [self appVersionDisplayString];
     _settingsImagePreviewCheckbox.state = [self showsImageClipboardPreviews]
         ? NSControlStateValueOn
         : NSControlStateValueOff;
