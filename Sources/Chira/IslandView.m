@@ -9,7 +9,7 @@ static const CGFloat ChiraHiddenNotchCornerRadius = 11.0;
 static const CGFloat ChiraIngestPulseVerticalDrop = 13.0;
 static const CGFloat ChiraClipboardBaseRowHeight = 28.0;
 static const CGFloat ChiraClipboardTextHoverRowHeight = 58.0;
-static const CGFloat ChiraClipboardImageHoverRowHeight = 84.0;
+static const CGFloat ChiraClipboardImageHoverRowHeight = 94.0;
 static const CGFloat ChiraHeaderTextHeight = 18.0;
 static const CGFloat ChiraHeaderButtonSize = 24.0;
 static const CGFloat ChiraHeaderIconTextBaselineOffset = -13.0;
@@ -318,8 +318,9 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 }
 
 - (NSRect)singleLineTextRectForRowRect:(NSRect)rowRect {
+    CGFloat baseMidY = NSMinY(rowRect) + ChiraClipboardBaseRowHeight / 2.0;
     return NSMakeRect(NSMinX(rowRect),
-                      floor(NSMidY(rowRect) - ChiraClipboardRowTextHeight / 2.0),
+                      floor(baseMidY - ChiraClipboardRowTextHeight / 2.0),
                       NSWidth(rowRect),
                       ChiraClipboardRowTextHeight);
 }
@@ -334,7 +335,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 - (NSRect)clipboardImageHoverRectForRowRect:(NSRect)rowRect {
     CGFloat hoverHeight = MAX(24.0, NSHeight(rowRect) - 8.0);
     return NSMakeRect(NSMinX(rowRect) - 8.0,
-                      floor(NSMidY(rowRect) - hoverHeight / 2.0),
+                      floor(NSMinY(rowRect) + 2.0),
                       NSWidth(rowRect) + 16.0,
                       hoverHeight);
 }
@@ -808,7 +809,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             CGFloat thumbnailScale = 0.82 + 0.18 * reveal;
             CGFloat visibleThumbnailSize = thumbnailSize * thumbnailScale;
             NSRect thumbnailRect = NSMakeRect(NSMinX(rowRect),
-                                              floor(NSMidY(rowRect) - thumbnailSize / 2.0),
+                                              NSMinY(rowRect) + ChiraClipboardBaseRowHeight + 4.0,
                                               thumbnailSize,
                                               thumbnailSize);
             NSRect visibleThumbnailRect = NSMakeRect(NSMidX(thumbnailRect) - visibleThumbnailSize / 2.0,
@@ -830,9 +831,6 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             }
 
             NSRect imageLabelRect = [self singleLineTextRectForRowRect:rowRect];
-            CGFloat finalLabelX = NSMaxX(thumbnailRect) + 14;
-            imageLabelRect.origin.x = NSMinX(rowRect) + (finalLabelX - NSMinX(rowRect)) * reveal;
-            imageLabelRect.size.width = NSMaxX(rowRect) - NSMinX(imageLabelRect);
             [line drawWithRect:imageLabelRect
                        options:NSStringDrawingTruncatesLastVisibleLine
                     attributes:itemAttributes];
@@ -844,11 +842,10 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             expandedAttributes[NSParagraphStyleAttributeName] = paragraph;
             NSString *expandedLine = [self expandedLineForClipboardObject:object atIndex:index];
 
-            CGFloat expandedTextHeight = 45;
-            [expandedLine drawWithRect:NSMakeRect(NSMinX(rowRect),
-                                                  floor(NSMidY(rowRect) - expandedTextHeight / 2.0),
-                                                  NSWidth(rowRect),
-                                                  expandedTextHeight)
+            CGFloat expandedTextHeight = MIN(45.0, MAX(ChiraClipboardRowTextHeight, NSHeight(rowRect) - 6.0));
+            NSRect expandedTextRect = [self singleLineTextRectForRowRect:rowRect];
+            expandedTextRect.size.height = expandedTextHeight;
+            [expandedLine drawWithRect:expandedTextRect
                                options:NSStringDrawingUsesLineFragmentOrigin
                             attributes:expandedAttributes];
         } else {
