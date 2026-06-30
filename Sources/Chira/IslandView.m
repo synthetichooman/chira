@@ -15,6 +15,7 @@ static const CGFloat ChiraHeaderButtonSize = 24.0;
 static const CGFloat ChiraHeaderIconTextBaselineOffset = -13.0;
 static const CGFloat ChiraClipboardRowTextHeight = 18.0;
 static const CGFloat ChiraClipboardTitleListGap = 12.0;
+static const CGFloat ChiraIslandBottomKeepAlivePadding = 56.0;
 static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
 
 static CGFloat ChiraSmoothStep(CGFloat value) {
@@ -722,6 +723,14 @@ typedef struct {
     return NSMakeRect((NSWidth(self.bounds) - width) / 2.0, baseY, width, height);
 }
 
+- (NSRect)interactiveIslandRectForVisibleRect:(NSRect)rect {
+    if (_progress < 0.85) return rect;
+
+    NSRect interactiveRect = rect;
+    interactiveRect.size.height += ChiraIslandBottomKeepAlivePadding * ChiraSmoothStep(_progress);
+    return interactiveRect;
+}
+
 - (CGFloat)expandedContentHeight {
     IslandModule *module = [self displayModule];
     if ([module.identifier isEqualToString:ChiraModuleIdentifierClipboard]) {
@@ -762,12 +771,13 @@ typedef struct {
 
     NSRect islandRect = [self currentIslandRect];
     if (NSPointInRect(point, islandRect)) return YES;
+    if (NSPointInRect(point, [self interactiveIslandRectForVisibleRect:islandRect])) return YES;
 
     if (self.mode == ChiraIslandModeClipboard && _hoveredClipboardIndex >= 0 && (_hoverExpansion > 0.01 || _targetHoverExpansion > 0.01)) {
         CGFloat extraHeight = MAX(0, [self expandedContentHeightForFullCurrentHover] - [self expandedContentHeight]) * _progress;
         if (extraHeight > 0) {
             islandRect.size.height += extraHeight;
-            return NSPointInRect(point, islandRect);
+            return NSPointInRect(point, [self interactiveIslandRectForVisibleRect:islandRect]);
         }
     }
 
