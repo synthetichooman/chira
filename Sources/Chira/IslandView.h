@@ -7,6 +7,7 @@
 @protocol IslandViewDelegate <NSObject>
 - (void)islandView:(IslandView *)view didSelectClipboardItemAtIndex:(NSInteger)index;
 - (void)islandViewDidRequestSettings:(IslandView *)view;
+- (void)islandViewDidRequestQuit:(IslandView *)view;
 @end
 
 @interface IslandView : NSView

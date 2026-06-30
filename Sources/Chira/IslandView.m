@@ -16,7 +16,8 @@ static const CGFloat ChiraHeaderIconTextBaselineOffset = -13.0;
 static const CGFloat ChiraClipboardRowTextHeight = 18.0;
 static const CGFloat ChiraClipboardTitleListGap = 12.0;
 static const CGFloat ChiraClipboardContentBottomPadding = 12.0;
-static const CGFloat ChiraIslandBottomKeepAlivePadding = 75.0;
+static const CGFloat ChiraIslandSingleItemBottomKeepAlivePadding = 16.0;
+static const CGFloat ChiraIslandMultiItemBottomKeepAlivePadding = 56.0;
 static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
 
 static CGFloat ChiraSmoothStep(CGFloat value) {
@@ -66,6 +67,7 @@ typedef struct {
     CGFloat _hoverExpansion;
     BOOL _pressedClipboardInside;
     NSImage *_settingsGearImage;
+    NSImage *_powerImage;
     NSMutableIndexSet *_sessionExpandedClipboardIndexes;
 }
 
@@ -128,6 +130,11 @@ typedef struct {
     NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
     NSRect islandRect = [self currentIslandRect];
     if (!NSPointInRect(point, islandRect)) return;
+
+    if (NSPointInRect(point, [self powerButtonRectInIslandRect:islandRect])) {
+        [self.delegate islandViewDidRequestQuit:self];
+        return;
+    }
 
     if (NSPointInRect(point, [self settingsButtonRectInIslandRect:islandRect])) {
         [self.delegate islandViewDidRequestSettings:self];
@@ -324,7 +331,7 @@ typedef struct {
     CGFloat contentTop = [self contentTopForIslandRect:rect];
     CGFloat contentX = [self contentXForIslandRect:rect horizontalPadding:horizontalPadding];
     CGFloat contentWidth = [self contentWidthForIslandRect:rect horizontalPadding:horizontalPadding];
-    CGFloat titleWidth = reservesSettings ? contentWidth - 34 : contentWidth;
+    CGFloat titleWidth = reservesSettings ? contentWidth - 64 : contentWidth;
     return NSMakeRect(contentX, floor(contentTop + 3), titleWidth, ChiraHeaderTextHeight);
 }
 
@@ -353,6 +360,13 @@ typedef struct {
                       floor(NSMidY(titleRect) - ChiraHeaderButtonSize / 2.0 + ChiraHeaderIconTextBaselineOffset),
                       ChiraHeaderButtonSize,
                       ChiraHeaderButtonSize);
+}
+
+- (NSRect)powerButtonRectInIslandRect:(NSRect)rect {
+    NSRect settingsRect = [self settingsButtonRectInIslandRect:rect];
+    if (NSIsEmptyRect(settingsRect)) return NSZeroRect;
+
+    return NSOffsetRect(settingsRect, -(ChiraHeaderButtonSize + 6), 0);
 }
 
 - (NSRect)singleLineTextRectForRowRect:(NSRect)rowRect {
@@ -753,8 +767,14 @@ typedef struct {
     if (_progress < 0.85) return rect;
 
     NSRect interactiveRect = rect;
-    interactiveRect.size.height += ChiraIslandBottomKeepAlivePadding * ChiraSmoothStep(_progress);
+    interactiveRect.size.height += [self bottomKeepAlivePadding] * ChiraSmoothStep(_progress);
     return interactiveRect;
+}
+
+- (CGFloat)bottomKeepAlivePadding {
+    NSInteger visibleCount = MIN((NSInteger)self.clipboardItems.count, [self visibleClipboardItemLimit]);
+    if (visibleCount <= 1) return ChiraIslandSingleItemBottomKeepAlivePadding;
+    return ChiraIslandMultiItemBottomKeepAlivePadding;
 }
 
 - (CGFloat)expandedContentHeight {
@@ -865,6 +885,18 @@ typedef struct {
     return _settingsGearImage;
 }
 
+- (NSImage *)powerImage {
+    if (_powerImage) return _powerImage;
+
+    NSImage *power = [NSImage imageWithSystemSymbolName:@"power" accessibilityDescription:@"Quit Chira"];
+    if (!power) return nil;
+
+    NSImageSymbolConfiguration *sizeConfig = [NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium];
+    NSImageSymbolConfiguration *colorConfig = [NSImageSymbolConfiguration configurationWithHierarchicalColor:[NSColor colorWithWhite:1 alpha:0.62]];
+    _powerImage = [[power imageWithSymbolConfiguration:sizeConfig] imageWithSymbolConfiguration:colorConfig];
+    return _powerImage;
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
     [NSColor.clearColor setFill];
     NSRectFill(self.bounds);
@@ -928,6 +960,18 @@ typedef struct {
     [@"Clipboard" drawWithRect:titleRect
                        options:NSStringDrawingTruncatesLastVisibleLine
                     attributes:primaryAttributes];
+
+    NSRect powerRect = [self powerButtonRectInIslandRect:rect];
+    NSImage *power = [self powerImage];
+    NSRect powerImageRect = NSInsetRect(powerRect, 5, 5);
+    if (power) {
+        [power drawInRect:powerImageRect
+                 fromRect:NSZeroRect
+                operation:NSCompositingOperationSourceOver
+                 fraction:contentAlpha
+           respectFlipped:NO
+                    hints:nil];
+    }
 
     NSRect settingsRect = [self settingsButtonRectInIslandRect:rect];
     NSImage *gear = [self settingsGearImage];

@@ -1,6 +1,7 @@
 #import "AppDelegate.h"
 #import "ClipboardHistoryItem.h"
 #import <CoreGraphics/CoreGraphics.h>
+#import <ServiceManagement/ServiceManagement.h>
 
 #ifndef CHIRA_GIT_SHA
 #define CHIRA_GIT_SHA "unknown"
@@ -26,6 +27,7 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
     NSTextField *_settingsCountValueLabel;
     NSStepper *_settingsCountStepper;
     NSButton *_settingsImagePreviewCheckbox;
+    NSButton *_settingsLaunchAtLoginCheckbox;
     NSTextField *_settingsVersionLabel;
     dispatch_queue_t _clipboardIngestQueue;
     NSTimeInterval _clipboardPollingResumeTime;
@@ -155,6 +157,10 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
     return [NSUserDefaults.standardUserDefaults boolForKey:ChiraPreviewImageClipboardKey];
 }
 
+- (BOOL)launchAtLoginEnabled {
+    return SMAppService.mainAppService.status == SMAppServiceStatusEnabled;
+}
+
 - (NSString *)appVersionIdentifier {
     NSDictionary *info = NSBundle.mainBundle.infoDictionary;
     NSString *version = info[@"CFBundleShortVersionString"] ?: @"0.1";
@@ -224,10 +230,27 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
     return divider;
 }
 
+- (NSButton *)settingsLinkButtonWithTitle:(NSString *)title frame:(NSRect)frame action:(SEL)action {
+    NSButton *button = [NSButton buttonWithTitle:title target:self action:action];
+    button.frame = frame;
+    button.bordered = NO;
+    button.alignment = NSTextAlignmentLeft;
+    button.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+    button.attributedTitle = [[NSAttributedString alloc] initWithString:title attributes:@{
+        NSFontAttributeName: button.font,
+        NSForegroundColorAttributeName: NSColor.secondaryLabelColor
+    }];
+    button.attributedAlternateTitle = [[NSAttributedString alloc] initWithString:title attributes:@{
+        NSFontAttributeName: button.font,
+        NSForegroundColorAttributeName: NSColor.labelColor
+    }];
+    return button;
+}
+
 - (void)setupSettingsPanelIfNeeded {
     if (_settingsPanel) return;
 
-    NSSize panelSize = NSMakeSize(320, 244);
+    NSSize panelSize = NSMakeSize(320, 274);
     _settingsPanel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
                                                 styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                                                   backing:NSBackingStoreBuffered
@@ -251,29 +274,29 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
     _settingsPanel.contentView = contentView;
 
     NSTextField *title = [NSTextField labelWithString:@"Chira"];
-    title.frame = NSMakeRect(20, 206, 200, 24);
+    title.frame = NSMakeRect(20, 236, 200, 24);
     title.font = [NSFont systemFontOfSize:17 weight:NSFontWeightSemibold];
     title.textColor = NSColor.labelColor;
     [contentView addSubview:title];
 
-    _settingsVersionLabel = [self settingsLabelWithString:@"" frame:NSMakeRect(20, 185, 280, 18)];
+    _settingsVersionLabel = [self settingsLabelWithString:@"" frame:NSMakeRect(20, 215, 280, 18)];
     _settingsVersionLabel.font = [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightRegular];
     [contentView addSubview:_settingsVersionLabel];
 
-    [contentView addSubview:[self settingsDividerWithFrame:NSMakeRect(20, 170, 280, 1)]];
+    [contentView addSubview:[self settingsDividerWithFrame:NSMakeRect(20, 200, 280, 1)]];
 
     NSTextField *subtitle = [NSTextField labelWithString:@"Clipboard"];
-    subtitle.frame = NSMakeRect(20, 142, 210, 18);
+    subtitle.frame = NSMakeRect(20, 172, 210, 18);
     subtitle.font = [NSFont systemFontOfSize:12 weight:NSFontWeightRegular];
     subtitle.textColor = NSColor.secondaryLabelColor;
     [contentView addSubview:subtitle];
 
-    [contentView addSubview:[self settingsLabelWithString:@"Visible items" frame:NSMakeRect(20, 114, 170, 18)]];
+    [contentView addSubview:[self settingsLabelWithString:@"Visible items" frame:NSMakeRect(20, 144, 170, 18)]];
 
-    _settingsCountValueLabel = [self settingsValueLabelWithString:@"" frame:NSMakeRect(220, 112, 28, 22)];
+    _settingsCountValueLabel = [self settingsValueLabelWithString:@"" frame:NSMakeRect(220, 142, 28, 22)];
     [contentView addSubview:_settingsCountValueLabel];
 
-    _settingsCountStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(264, 108, 18, 28)];
+    _settingsCountStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(264, 138, 18, 28)];
     _settingsCountStepper.minValue = 1;
     _settingsCountStepper.maxValue = 8;
     _settingsCountStepper.increment = 1;
@@ -284,17 +307,26 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
     _settingsImagePreviewCheckbox = [NSButton checkboxWithTitle:@"Show image previews on hover"
                                                          target:self
                                                          action:@selector(settingsImagePreviewChanged:)];
-    _settingsImagePreviewCheckbox.frame = NSMakeRect(16, 78, 280, 24);
+    _settingsImagePreviewCheckbox.frame = NSMakeRect(16, 108, 280, 24);
     _settingsImagePreviewCheckbox.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
     [contentView addSubview:_settingsImagePreviewCheckbox];
 
+    _settingsLaunchAtLoginCheckbox = [NSButton checkboxWithTitle:@"Open at login"
+                                                          target:self
+                                                          action:@selector(settingsLaunchAtLoginChanged:)];
+    _settingsLaunchAtLoginCheckbox.frame = NSMakeRect(16, 80, 280, 24);
+    _settingsLaunchAtLoginCheckbox.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+    [contentView addSubview:_settingsLaunchAtLoginCheckbox];
+
     [contentView addSubview:[self settingsDividerWithFrame:NSMakeRect(20, 62, 280, 1)]];
 
-    [contentView addSubview:[self settingsLabelWithString:@"Developer  kimminpyo" frame:NSMakeRect(20, 35, 260, 18)]];
+    [contentView addSubview:[self settingsLinkButtonWithTitle:@"Developer  hooman"
+                                                        frame:NSMakeRect(16, 32, 260, 24)
+                                                       action:@selector(openDeveloperLink)]];
 
-    NSTextField *github = [self settingsLabelWithString:@"GitHub  synthetichooman/chira" frame:NSMakeRect(20, 13, 270, 18)];
-    github.selectable = YES;
-    [contentView addSubview:github];
+    [contentView addSubview:[self settingsLinkButtonWithTitle:@"GitHub  synthetichooman/chira"
+                                                        frame:NSMakeRect(16, 10, 270, 24)
+                                                       action:@selector(openGitHubLink)]];
 }
 
 - (void)refreshSettingsPanelValues {
@@ -303,6 +335,9 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
     _settingsCountValueLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)count];
     _settingsVersionLabel.stringValue = [self appVersionDisplayString];
     _settingsImagePreviewCheckbox.state = [self showsImageClipboardPreviews]
+        ? NSControlStateValueOn
+        : NSControlStateValueOff;
+    _settingsLaunchAtLoginCheckbox.state = [self launchAtLoginEnabled]
         ? NSControlStateValueOn
         : NSControlStateValueOff;
 }
@@ -346,6 +381,32 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
         [self clearImagePreviewCaches];
     }
     [_islandView setNeedsDisplay:YES];
+}
+
+- (void)settingsLaunchAtLoginChanged:(NSButton *)sender {
+    BOOL shouldEnable = sender.state == NSControlStateValueOn;
+    NSError *error = nil;
+    BOOL success = shouldEnable
+        ? [SMAppService.mainAppService registerAndReturnError:&error]
+        : [SMAppService.mainAppService unregisterAndReturnError:&error];
+    if (!success) {
+        NSBeep();
+        [self refreshSettingsPanelValues];
+    }
+}
+
+- (void)openURLString:(NSString *)urlString {
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) return;
+    [NSWorkspace.sharedWorkspace openURL:url];
+}
+
+- (void)openDeveloperLink {
+    [self openURLString:@"https://instagram.com/hooman.log"];
+}
+
+- (void)openGitHubLink {
+    [self openURLString:@"https://github.com/synthetichooman/chira"];
 }
 
 - (void)clearImagePreviewCaches {
@@ -600,6 +661,11 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
 - (void)islandViewDidRequestSettings:(IslandView *)view {
     (void)view;
     [self toggleSettingsPanel];
+}
+
+- (void)islandViewDidRequestQuit:(IslandView *)view {
+    (void)view;
+    [self quit];
 }
 
 @end

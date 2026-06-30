@@ -28,13 +28,23 @@ clang \
     -o "$ROOT_DIR/.build/release/Chira" \
     "$ROOT_DIR"/Sources/Chira/*.m \
     -framework AppKit \
-    -framework ImageIO
+    -framework ImageIO \
+    -framework ServiceManagement
+
+if pgrep -x Chira >/dev/null; then
+    pkill -x Chira >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5; do
+        pgrep -x Chira >/dev/null || break
+        sleep 0.2
+    done
+fi
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$ROOT_DIR/.build/release/Chira" "$MACOS_DIR/Chira"
 cp "$ROOT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
+cp "$ROOT_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 
 chmod +x "$MACOS_DIR/Chira"
 
