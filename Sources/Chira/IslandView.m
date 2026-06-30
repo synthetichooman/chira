@@ -757,6 +757,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
         BOOL hovered = _hoveredClipboardIndex == index;
         BOOL expanded = hovered && _hoverExpansion > 0.45;
+        BOOL imageRevealing = hovered && item.image && _hoverExpansion > 0.01;
         BOOL pressed = _pressedClipboardInside && _pressedClipboardIndex == index;
         CGFloat rowHeight = [self clipboardRowHeightForObject:object atIndex:index width:NSWidth(rect)];
         NSRect rowRect = NSMakeRect(NSMinX(rect), rowTop, NSWidth(rect), rowHeight);
@@ -780,34 +781,43 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         };
         NSString *line = [self displayLineForClipboardObject:object atIndex:index];
 
-        if (expanded && item.image) {
+        if (imageRevealing) {
+            CGFloat reveal = ChiraSmoothStep(_hoverExpansion);
             CGFloat thumbnailSize = 58;
+            CGFloat thumbnailScale = 0.82 + 0.18 * reveal;
+            CGFloat visibleThumbnailSize = thumbnailSize * thumbnailScale;
             NSRect thumbnailRect = NSMakeRect(NSMinX(rowRect),
                                               floor(NSMidY(rowRect) - thumbnailSize / 2.0),
                                               thumbnailSize,
                                               thumbnailSize);
-            [[NSColor colorWithWhite:1 alpha:0.10 * contentAlpha] setFill];
-            [[NSBezierPath bezierPathWithRoundedRect:thumbnailRect xRadius:8 yRadius:8] fill];
+            NSRect visibleThumbnailRect = NSMakeRect(NSMidX(thumbnailRect) - visibleThumbnailSize / 2.0,
+                                                     NSMidY(thumbnailRect) - visibleThumbnailSize / 2.0,
+                                                     visibleThumbnailSize,
+                                                     visibleThumbnailSize);
+            CGFloat previewAlpha = contentAlpha * reveal;
+            [[NSColor colorWithWhite:1 alpha:0.10 * previewAlpha] setFill];
+            [[NSBezierPath bezierPathWithRoundedRect:visibleThumbnailRect xRadius:8 yRadius:8] fill];
 
             if (item.previewImage) {
                 NSSize imageSize = item.previewImage.size;
-                CGFloat scale = MIN(NSWidth(thumbnailRect) / MAX(imageSize.width, 1), NSHeight(thumbnailRect) / MAX(imageSize.height, 1));
+                CGFloat scale = MIN(NSWidth(visibleThumbnailRect) / MAX(imageSize.width, 1), NSHeight(visibleThumbnailRect) / MAX(imageSize.height, 1));
                 NSSize drawSize = NSMakeSize(imageSize.width * scale, imageSize.height * scale);
-                NSRect drawRect = NSMakeRect(NSMidX(thumbnailRect) - drawSize.width / 2.0,
-                                             NSMidY(thumbnailRect) - drawSize.height / 2.0,
+                NSRect drawRect = NSMakeRect(NSMidX(visibleThumbnailRect) - drawSize.width / 2.0,
+                                             NSMidY(visibleThumbnailRect) - drawSize.height / 2.0,
                                              drawSize.width,
                                              drawSize.height);
                 [item.previewImage drawInRect:drawRect
                                       fromRect:NSZeroRect
                                      operation:NSCompositingOperationSourceOver
-                                      fraction:contentAlpha
+                                      fraction:previewAlpha
                                 respectFlipped:YES
                                          hints:nil];
             }
 
             NSRect imageLabelRect = [self singleLineTextRectForRowRect:rowRect];
-            imageLabelRect.origin.x = NSMaxX(thumbnailRect) + 14;
-            imageLabelRect.size.width = NSWidth(rowRect) - thumbnailSize - 14;
+            CGFloat finalLabelX = NSMaxX(thumbnailRect) + 14;
+            imageLabelRect.origin.x = NSMinX(rowRect) + (finalLabelX - NSMinX(rowRect)) * reveal;
+            imageLabelRect.size.width = NSMaxX(rowRect) - NSMinX(imageLabelRect);
             [line drawWithRect:imageLabelRect
                        options:NSStringDrawingTruncatesLastVisibleLine
                     attributes:itemAttributes];
