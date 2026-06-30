@@ -14,7 +14,7 @@ static const CGFloat ChiraHeaderTextHeight = 18.0;
 static const CGFloat ChiraHeaderButtonSize = 24.0;
 static const CGFloat ChiraHeaderIconTextBaselineOffset = -13.0;
 static const CGFloat ChiraClipboardRowTextHeight = 18.0;
-static const CGFloat ChiraClipboardHoverTextBaselineOffset = -13.0;
+static const CGFloat ChiraClipboardHoverTextBaselineOffset = 0.0;
 static const CGFloat ChiraClipboardTitleListGap = 12.0;
 static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
 
@@ -364,6 +364,31 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         return part.length > 0;
     }]] componentsJoinedByString:@" "];
     return [NSString stringWithFormat:@"%ld  %@", (long)(index + 1), collapsed.length ? collapsed : source];
+}
+
+- (NSString *)continuationLineForExpandedLine:(NSString *)line
+                                        width:(CGFloat)width
+                                   attributes:(NSDictionary *)attributes {
+    if (ceil([line sizeWithAttributes:attributes].width) <= width) return @"";
+
+    NSUInteger low = 0;
+    NSUInteger high = line.length;
+    while (low < high) {
+        NSUInteger mid = (low + high + 1) / 2;
+        NSString *prefix = [line substringToIndex:mid];
+        if (ceil([prefix sizeWithAttributes:attributes].width) <= width) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    if (low >= line.length) return @"";
+
+    NSRange safeRange = [line rangeOfComposedCharacterSequenceAtIndex:low];
+    NSUInteger cutIndex = MIN(NSMaxRange(safeRange), line.length);
+    NSString *tail = [line substringFromIndex:cutIndex];
+    return [tail stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
 }
 
 - (BOOL)clipboardTextNeedsExpansion:(id)object atIndex:(NSInteger)index width:(CGFloat)width {
@@ -835,19 +860,29 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                        options:NSStringDrawingTruncatesLastVisibleLine
                     attributes:itemAttributes];
         } else if (expanded && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
+            NSRect itemRect = [self singleLineTextRectForRowRect:rowRect];
+            [line drawWithRect:itemRect options:NSStringDrawingTruncatesLastVisibleLine attributes:itemAttributes];
+
             NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
             paragraph.lineBreakMode = NSLineBreakByCharWrapping;
             paragraph.lineSpacing = 1.5;
             NSMutableDictionary *expandedAttributes = [itemAttributes mutableCopy];
             expandedAttributes[NSParagraphStyleAttributeName] = paragraph;
             NSString *expandedLine = [self expandedLineForClipboardObject:object atIndex:index];
+            NSString *continuationLine = [self continuationLineForExpandedLine:expandedLine
+                                                                         width:NSWidth(rowRect)
+                                                                    attributes:itemAttributes];
 
-            CGFloat expandedTextHeight = MIN(45.0, MAX(ChiraClipboardRowTextHeight, NSHeight(rowRect) - 6.0));
-            NSRect expandedTextRect = [self singleLineTextRectForRowRect:rowRect];
-            expandedTextRect.size.height = expandedTextHeight;
-            [expandedLine drawWithRect:expandedTextRect
-                               options:NSStringDrawingUsesLineFragmentOrigin
-                            attributes:expandedAttributes];
+            if (continuationLine.length) {
+                CGFloat continuationHeight = MAX(0, NSHeight(rowRect) - ChiraClipboardBaseRowHeight - 4.0);
+                NSRect continuationRect = NSMakeRect(NSMinX(rowRect),
+                                                     NSMinY(rowRect) + ChiraClipboardBaseRowHeight - 1.0,
+                                                     NSWidth(rowRect),
+                                                     continuationHeight);
+                [continuationLine drawWithRect:continuationRect
+                                       options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingTruncatesLastVisibleLine
+                                    attributes:expandedAttributes];
+            }
         } else {
             NSRect itemRect = [self singleLineTextRectForRowRect:rowRect];
             [line drawWithRect:itemRect options:NSStringDrawingTruncatesLastVisibleLine attributes:itemAttributes];
