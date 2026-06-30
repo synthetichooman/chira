@@ -828,35 +828,40 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
         BOOL hovered = _hoveredClipboardIndex == index;
         BOOL activelyHovered = hovered && _targetHoverExpansion > 0.5;
-        BOOL expanded = hovered && _hoverExpansion > 0.45;
-        BOOL imageRevealing = hovered && item.image && self.showsImageClipboardPreviews && _hoverExpansion > 0.01;
         BOOL pressed = _pressedClipboardInside && _pressedClipboardIndex == index;
         CGFloat rowHeight = [self clipboardRowHeightForObject:object atIndex:index width:NSWidth(rect)];
+        BOOL expanding = hovered && rowHeight > ChiraClipboardBaseRowHeight + 0.5;
+        CGFloat reveal = hovered ? ChiraSmoothStep(_hoverExpansion) : 0.0;
+        BOOL imageRevealing = expanding && item.image && self.showsImageClipboardPreviews && reveal > 0.01;
         NSRect rowRect = NSMakeRect(NSMinX(rect), rowTop, NSWidth(rect), rowHeight);
 
         if (activelyHovered || pressed) {
             NSRect highlightRect;
-            if (item.image && self.showsImageClipboardPreviews) {
+            if (item.image && self.showsImageClipboardPreviews && expanding) {
                 highlightRect = [self clipboardImageHoverRectForRowRect:rowRect];
-            } else if (expanded) {
+            } else if (expanding) {
                 highlightRect = [self clipboardExpandedHoverRectForRowRect:rowRect];
             } else {
                 CGFloat highlightHeight = MIN(24, rowHeight);
                 highlightRect = [self clipboardHoverRectForRowRect:rowRect height:highlightHeight horizontalInset:8];
             }
-            [[NSColor colorWithWhite:1 alpha:0.07 * contentAlpha] setFill];
+            CGFloat highlightAlpha = 0.07 * contentAlpha;
+            if (expanding && !pressed) {
+                highlightAlpha *= MAX(0.35, reveal);
+            }
+            [[NSColor colorWithWhite:1 alpha:highlightAlpha] setFill];
             CGFloat radius = MIN(10.0, NSHeight(highlightRect) / 2.0);
             [[NSBezierPath bezierPathWithRoundedRect:highlightRect xRadius:radius yRadius:radius] fill];
         }
 
+        CGFloat itemTextAlpha = (pressed || activelyHovered ? 0.96 : 0.64) * contentAlpha;
         NSDictionary *itemAttributes = @{
             NSFontAttributeName: [NSFont systemFontOfSize:12 weight:(pressed ? NSFontWeightSemibold : NSFontWeightMedium)],
-            NSForegroundColorAttributeName: [NSColor colorWithWhite:1 alpha:(pressed || activelyHovered ? 0.96 : 0.64) * contentAlpha]
+            NSForegroundColorAttributeName: [NSColor colorWithWhite:1 alpha:itemTextAlpha]
         };
         NSString *line = [self displayLineForClipboardObject:object atIndex:index];
 
         if (imageRevealing) {
-            CGFloat reveal = ChiraSmoothStep(_hoverExpansion);
             CGFloat thumbnailSize = 58;
             CGFloat thumbnailScale = 0.82 + 0.18 * reveal;
             CGFloat visibleThumbnailSize = thumbnailSize * thumbnailScale;
@@ -886,7 +891,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             [line drawWithRect:imageLabelRect
                        options:NSStringDrawingTruncatesLastVisibleLine
                     attributes:itemAttributes];
-        } else if (expanded && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
+        } else if (expanding && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
             NSRect itemRect = [self singleLineTextRectForRowRect:rowRect];
             NSString *expandedLine = [self expandedLineForClipboardObject:object atIndex:index];
             [expandedLine drawWithRect:itemRect options:NSStringDrawingTruncatesLastVisibleLine attributes:itemAttributes];
@@ -895,11 +900,13 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                                                                          width:NSWidth(rowRect)
                                                                     attributes:itemAttributes];
 
-            if (continuationLine.length) {
+            if (continuationLine.length && reveal > 0.01) {
                 NSRect continuationRect = [self continuationTextRectBelowTextRect:itemRect inRowRect:rowRect];
+                NSMutableDictionary *continuationAttributes = [itemAttributes mutableCopy];
+                continuationAttributes[NSForegroundColorAttributeName] = [NSColor colorWithWhite:1 alpha:itemTextAlpha * reveal];
                 [continuationLine drawWithRect:continuationRect
                                        options:NSStringDrawingTruncatesLastVisibleLine
-                                    attributes:itemAttributes];
+                                    attributes:continuationAttributes];
             }
         } else {
             NSRect itemRect = [self singleLineTextRectForRowRect:rowRect];
