@@ -1,5 +1,17 @@
 #import "ClipboardHistoryItem.h"
 #import "ChiraConstants.h"
+#import <ImageIO/ImageIO.h>
+
+static const CGFloat ChiraClipboardThumbnailSide = 58.0;
+static const NSUInteger ChiraMaxInMemoryImageDataBytes = 1024 * 1024;
+
+@interface ClipboardHistoryItem ()
+@property (nonatomic, strong) NSURL *dataFileURL;
+@property (nonatomic, copy) NSString *dataFingerprint;
+@property (nonatomic) NSUInteger dataLength;
+- (void)recordImageDataIdentityIfNeeded;
+- (void)spillImageDataToDiskIfNeeded;
+@end
 
 static NSString *ChiraMiddleTruncatedString(NSString *string, NSUInteger limit) {
     if (string.length <= limit) return string;
@@ -84,8 +96,89 @@ static NSSize ChiraPixelSizeForImage(NSImage *image) {
     return image.size;
 }
 
+static NSSize ChiraPixelSizeForImageData(NSData *data) {
+    if (!data.length) return NSZeroSize;
+
+    CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data, nil);
+    if (!source) return NSZeroSize;
+
+    NSDictionary *properties = CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, 0, nil));
+    CFRelease(source);
+
+    NSNumber *width = properties[(NSString *)kCGImagePropertyPixelWidth];
+    NSNumber *height = properties[(NSString *)kCGImagePropertyPixelHeight];
+    if (width.doubleValue <= 0 || height.doubleValue <= 0) return NSZeroSize;
+    return NSMakeSize(width.doubleValue, height.doubleValue);
+}
+
+static NSData *ChiraPNGDataForImage(NSImage *image) {
+    if (!image) return nil;
+
+    CGImageRef cgImage = [image CGImageForProposedRect:nil context:nil hints:nil];
+    if (!cgImage) return nil;
+
+    NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithCGImage:cgImage];
+    return [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+}
+
+static NSImage *ChiraThumbnailImageForImageData(NSData *data) {
+    if (!data.length) return nil;
+
+    CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data, nil);
+    if (!source) return nil;
+
+    NSDictionary *options = @{
+        (NSString *)kCGImageSourceCreateThumbnailFromImageAlways: @YES,
+        (NSString *)kCGImageSourceCreateThumbnailWithTransform: @YES,
+        (NSString *)kCGImageSourceShouldCacheImmediately: @NO,
+        (NSString *)kCGImageSourceThumbnailMaxPixelSize: @(ChiraClipboardThumbnailSide * 2.0)
+    };
+    CGImageRef thumbnailRef = CGImageSourceCreateThumbnailAtIndex(source, 0, (__bridge CFDictionaryRef)options);
+    CFRelease(source);
+    if (!thumbnailRef) return nil;
+
+    NSImage *thumbnail = [[NSImage alloc] initWithCGImage:thumbnailRef
+                                                     size:NSMakeSize(ChiraClipboardThumbnailSide, ChiraClipboardThumbnailSide)];
+    CGImageRelease(thumbnailRef);
+    return thumbnail;
+}
+
+static NSImage *ChiraThumbnailImageForImage(NSImage *image) {
+    if (!image) return nil;
+
+    NSSize imageSize = image.size;
+    if (imageSize.width <= 0 || imageSize.height <= 0) {
+        imageSize = ChiraPixelSizeForImage(image);
+    }
+    if (imageSize.width <= 0 || imageSize.height <= 0) return nil;
+
+    CGFloat side = ChiraClipboardThumbnailSide;
+    CGFloat scale = MIN(side / imageSize.width, side / imageSize.height);
+    NSSize drawSize = NSMakeSize(floor(imageSize.width * scale), floor(imageSize.height * scale));
+    NSRect drawRect = NSMakeRect(floor((side - drawSize.width) / 2.0),
+                                 floor((side - drawSize.height) / 2.0),
+                                 drawSize.width,
+                                 drawSize.height);
+
+    NSImage *thumbnail = [[NSImage alloc] initWithSize:NSMakeSize(side, side)];
+    [thumbnail lockFocus];
+    [NSColor.clearColor setFill];
+    NSRectFill(NSMakeRect(0, 0, side, side));
+    [image drawInRect:drawRect
+              fromRect:NSZeroRect
+             operation:NSCompositingOperationSourceOver
+              fraction:1.0
+        respectFlipped:NO
+                 hints:nil];
+    [thumbnail unlockFocus];
+    return thumbnail;
+}
+
 static NSString *ChiraGeneratedImageLabel(NSData *data, NSPasteboardType type, NSImage *image) {
-    NSSize size = ChiraPixelSizeForImage(image);
+    NSSize size = ChiraPixelSizeForImageData(data);
+    if (size.width <= 0 || size.height <= 0) {
+        size = ChiraPixelSizeForImage(image);
+    }
     NSString *typeLabel = ChiraImageTypeLabel(type);
     NSString *fingerprint = ChiraShortImageFingerprint(data);
 
@@ -101,36 +194,96 @@ static NSString *ChiraDisplayTextForImage(NSPasteboard *pasteboard, NSData *data
     return ChiraGeneratedImageLabel(data, type, image);
 }
 
+static NSPasteboardType ChiraPasteboardTypeForImageExtension(NSString *extension) {
+    NSString *lowercaseExtension = extension.lowercaseString;
+    if ([lowercaseExtension isEqualToString:@"png"]) return NSPasteboardTypePNG;
+    if ([lowercaseExtension isEqualToString:@"tif"] || [lowercaseExtension isEqualToString:@"tiff"]) return NSPasteboardTypeTIFF;
+    if ([lowercaseExtension isEqualToString:@"jpg"] || [lowercaseExtension isEqualToString:@"jpeg"]) return (NSPasteboardType)@"public.jpeg";
+    if ([lowercaseExtension isEqualToString:@"gif"]) return (NSPasteboardType)@"com.compuserve.gif";
+    if ([lowercaseExtension isEqualToString:@"heic"]) return (NSPasteboardType)@"public.heic";
+    if ([lowercaseExtension isEqualToString:@"heif"]) return (NSPasteboardType)@"public.heif";
+    return nil;
+}
+
+static NSString *ChiraFileExtensionForPasteboardType(NSPasteboardType type) {
+    if ([type isEqualToString:NSPasteboardTypePNG]) return @"png";
+    if ([type isEqualToString:NSPasteboardTypeTIFF]) return @"tiff";
+    if ([type localizedCaseInsensitiveContainsString:@"jpeg"] ||
+        [type localizedCaseInsensitiveContainsString:@"jpg"]) return @"jpg";
+    if ([type localizedCaseInsensitiveContainsString:@"gif"]) return @"gif";
+    if ([type localizedCaseInsensitiveContainsString:@"heic"]) return @"heic";
+    if ([type localizedCaseInsensitiveContainsString:@"heif"]) return @"heif";
+    return @"image";
+}
+
 static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard, NSURL *fileURL) {
     if (!fileURL.isFileURL || !ChiraIsImageExtension(fileURL.pathExtension)) return nil;
 
-    NSImage *image = [[NSImage alloc] initWithContentsOfURL:fileURL];
-    NSData *data = nil;
-    NSPasteboardType type = NSPasteboardTypeTIFF;
-
-    if ([fileURL.pathExtension.lowercaseString isEqualToString:@"png"]) {
-        data = [NSData dataWithContentsOfURL:fileURL options:NSDataReadingMappedIfSafe error:nil];
+    NSData *data = [NSData dataWithContentsOfURL:fileURL options:NSDataReadingMappedIfSafe error:nil];
+    NSPasteboardType type = ChiraPasteboardTypeForImageExtension(fileURL.pathExtension);
+    NSImage *image = nil;
+    if (!type) {
+        image = [[NSImage alloc] initWithContentsOfURL:fileURL];
+        data = ChiraPNGDataForImage(image);
         type = NSPasteboardTypePNG;
-    } else if ([fileURL.pathExtension.lowercaseString isEqualToString:@"tif"] ||
-               [fileURL.pathExtension.lowercaseString isEqualToString:@"tiff"]) {
-        data = [NSData dataWithContentsOfURL:fileURL options:NSDataReadingMappedIfSafe error:nil];
-        type = NSPasteboardTypeTIFF;
-    } else {
-        data = image.TIFFRepresentation;
     }
-
-    if (!data.length || !image) return nil;
+    if (!data.length || !type.length) return nil;
 
     ClipboardHistoryItem *item = [ClipboardHistoryItem new];
     item.dataValue = data;
     item.pasteboardType = type;
-    item.previewImage = image;
     item.image = YES;
+    item.thumbnailImage = ChiraThumbnailImageForImageData(data);
+    if (!item.thumbnailImage && image) {
+        item.previewImage = image;
+        [item prepareThumbnailIfNeeded];
+    }
     item.displayText = ChiraDisplayTextForImage(pasteboard, data, type, image);
+    if (item.thumbnailImage) item.previewImage = nil;
+    [item recordImageDataIdentityIfNeeded];
+    [item spillImageDataToDiskIfNeeded];
     return item;
 }
 
 @implementation ClipboardHistoryItem
+
+- (void)dealloc {
+    if (self.dataFileURL) {
+        [NSFileManager.defaultManager removeItemAtURL:self.dataFileURL error:nil];
+    }
+}
+
+- (void)recordImageDataIdentityIfNeeded {
+    if (!self.image || !self.dataValue.length) return;
+
+    self.dataLength = self.dataValue.length;
+    if (!self.dataFingerprint.length) {
+        self.dataFingerprint = ChiraShortImageFingerprint(self.dataValue);
+    }
+}
+
+- (void)spillImageDataToDiskIfNeeded {
+    if (!self.image || self.dataFileURL || self.dataValue.length <= ChiraMaxInMemoryImageDataBytes) return;
+
+    [self recordImageDataIdentityIfNeeded];
+
+    NSString *directoryPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ChiraClipboardItems"];
+    NSURL *directoryURL = [NSURL fileURLWithPath:directoryPath isDirectory:YES];
+    if (![NSFileManager.defaultManager createDirectoryAtURL:directoryURL
+                                withIntermediateDirectories:YES
+                                                 attributes:nil
+                                                      error:nil]) {
+        return;
+    }
+
+    NSString *extension = ChiraFileExtensionForPasteboardType(self.pasteboardType);
+    NSString *filename = [NSString stringWithFormat:@"%@.%@", NSUUID.UUID.UUIDString, extension];
+    NSURL *fileURL = [directoryURL URLByAppendingPathComponent:filename];
+    if ([self.dataValue writeToURL:fileURL options:NSDataWritingAtomic error:nil]) {
+        self.dataFileURL = fileURL;
+        self.dataValue = nil;
+    }
+}
 
 + (instancetype)textItemWithString:(NSString *)string {
     if (!string.length) return nil;
@@ -148,28 +301,47 @@ static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard,
 
     NSData *pngData = [pasteboard dataForType:NSPasteboardTypePNG];
     NSData *tiffData = [pasteboard dataForType:NSPasteboardTypeTIFF];
-    NSData *imageData = pngData.length ? pngData : tiffData;
-    NSPasteboardType imageType = pngData.length ? NSPasteboardTypePNG : NSPasteboardTypeTIFF;
 
-    if (imageData.length) {
+    if (pngData.length || tiffData.length) {
         ClipboardHistoryItem *item = [ClipboardHistoryItem new];
-        item.dataValue = imageData;
-        item.pasteboardType = imageType;
         item.image = YES;
-        item.previewImage = [[NSImage alloc] initWithData:imageData];
-        item.displayText = ChiraDisplayTextForImage(pasteboard, imageData, imageType, item.previewImage);
+        if (pngData.length) {
+            item.dataValue = pngData;
+            item.pasteboardType = NSPasteboardTypePNG;
+        } else {
+            item.dataValue = tiffData;
+            item.pasteboardType = NSPasteboardTypeTIFF;
+        }
+        item.thumbnailImage = ChiraThumbnailImageForImageData(item.dataValue);
+        if (!item.thumbnailImage) {
+            item.previewImage = [[NSImage alloc] initWithData:item.dataValue];
+            [item prepareThumbnailIfNeeded];
+        }
+        item.displayText = ChiraDisplayTextForImage(pasteboard, item.dataValue, item.pasteboardType, item.previewImage);
+        if (item.thumbnailImage) item.previewImage = nil;
+        [item recordImageDataIdentityIfNeeded];
+        [item spillImageDataToDiskIfNeeded];
         return item;
     }
 
     NSImage *pasteboardImage = [[NSImage alloc] initWithPasteboard:pasteboard];
-    NSData *pasteboardImageData = pasteboardImage.TIFFRepresentation;
+    NSData *pasteboardImageData = ChiraPNGDataForImage(pasteboardImage);
+    NSPasteboardType pasteboardImageType = NSPasteboardTypePNG;
+    if (!pasteboardImageData.length) {
+        pasteboardImageData = pasteboardImage.TIFFRepresentation;
+        pasteboardImageType = NSPasteboardTypeTIFF;
+    }
     if (pasteboardImageData.length) {
         ClipboardHistoryItem *item = [ClipboardHistoryItem new];
         item.dataValue = pasteboardImageData;
-        item.pasteboardType = NSPasteboardTypeTIFF;
+        item.pasteboardType = pasteboardImageType;
         item.previewImage = pasteboardImage;
         item.image = YES;
-        item.displayText = ChiraDisplayTextForImage(pasteboard, pasteboardImageData, NSPasteboardTypeTIFF, pasteboardImage);
+        item.displayText = ChiraDisplayTextForImage(pasteboard, pasteboardImageData, pasteboardImageType, pasteboardImage);
+        [item prepareThumbnailIfNeeded];
+        if (item.thumbnailImage) item.previewImage = nil;
+        [item recordImageDataIdentityIfNeeded];
+        [item spillImageDataToDiskIfNeeded];
         return item;
     }
 
@@ -187,16 +359,35 @@ static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard,
 - (BOOL)matchesItem:(ClipboardHistoryItem *)item {
     if (!item || self.image != item.image) return NO;
     if (self.image) {
-        return [self.pasteboardType isEqualToString:item.pasteboardType] && [self.dataValue isEqualToData:item.dataValue];
+        if (![self.pasteboardType isEqualToString:item.pasteboardType]) return NO;
+        if (self.dataValue.length && item.dataValue.length) {
+            return [self.dataValue isEqualToData:item.dataValue];
+        }
+        return self.dataLength > 0 &&
+            self.dataLength == item.dataLength &&
+            self.dataFingerprint.length > 0 &&
+            [self.dataFingerprint isEqualToString:item.dataFingerprint];
     }
     return [self.stringValue isEqualToString:item.stringValue];
+}
+
+- (void)prepareThumbnailIfNeeded {
+    if (!self.image || self.thumbnailImage || !self.previewImage) return;
+
+    self.thumbnailImage = ChiraThumbnailImageForImage(self.previewImage);
 }
 
 - (void)writeToPasteboard:(NSPasteboard *)pasteboard {
     [pasteboard clearContents];
 
-    if (self.image && self.dataValue.length && self.pasteboardType.length) {
-        [pasteboard setData:self.dataValue forType:self.pasteboardType];
+    if (self.image && self.pasteboardType.length) {
+        NSData *data = self.dataValue;
+        if (!data.length && self.dataFileURL) {
+            data = [NSData dataWithContentsOfURL:self.dataFileURL options:NSDataReadingMappedIfSafe error:nil];
+        }
+        if (data.length) {
+            [pasteboard setData:data forType:self.pasteboardType];
+        }
         return;
     }
 

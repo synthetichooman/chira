@@ -48,6 +48,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     CGFloat _hoverExpansion;
     CGFloat _targetHoverExpansion;
     BOOL _pressedClipboardInside;
+    NSImage *_settingsGearImage;
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
@@ -397,9 +398,14 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     if (_hoveredClipboardIndex < 0 || _hoveredClipboardIndex >= (NSInteger)module.items.count) return;
 
     ClipboardHistoryItem *item = [self clipboardItemFromObject:module.items[_hoveredClipboardIndex]];
-    if (!item.image || item.previewImage || !item.dataValue.length) return;
+    if (!item.image) return;
+    if (item.thumbnailImage) return;
 
-    item.previewImage = [[NSImage alloc] initWithData:item.dataValue];
+    if (!item.previewImage && item.dataValue.length) {
+        item.previewImage = [[NSImage alloc] initWithData:item.dataValue];
+    }
+    [item prepareThumbnailIfNeeded];
+    if (item.thumbnailImage) item.previewImage = nil;
 }
 
 - (NSInteger)clipboardItemIndexAtPoint:(NSPoint)point forModule:(IslandModule *)module inIslandRect:(NSRect)rect {
@@ -639,6 +645,18 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     return [NSBezierPath bezierPathWithRoundedRect:rect xRadius:floatingRadius yRadius:floatingRadius];
 }
 
+- (NSImage *)settingsGearImage {
+    if (_settingsGearImage) return _settingsGearImage;
+
+    NSImage *gear = [NSImage imageWithSystemSymbolName:@"gearshape.fill" accessibilityDescription:@"Settings"];
+    if (!gear) return nil;
+
+    NSImageSymbolConfiguration *sizeConfig = [NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium];
+    NSImageSymbolConfiguration *colorConfig = [NSImageSymbolConfiguration configurationWithHierarchicalColor:[NSColor colorWithWhite:1 alpha:0.62]];
+    _settingsGearImage = [[gear imageWithSymbolConfiguration:sizeConfig] imageWithSymbolConfiguration:colorConfig];
+    return _settingsGearImage;
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
     [NSColor.clearColor setFill];
     NSRectFill(self.bounds);
@@ -711,17 +729,16 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
     if (isClipboardModule) {
         NSRect settingsRect = [self settingsButtonRectInIslandRect:rect];
-        NSImage *gear = [NSImage imageWithSystemSymbolName:@"gearshape.fill" accessibilityDescription:@"Settings"];
-        NSImageSymbolConfiguration *sizeConfig = [NSImageSymbolConfiguration configurationWithPointSize:13 weight:NSFontWeightMedium];
-        NSImageSymbolConfiguration *colorConfig = [NSImageSymbolConfiguration configurationWithHierarchicalColor:[NSColor colorWithWhite:1 alpha:0.62 * contentAlpha]];
-        gear = [[gear imageWithSymbolConfiguration:sizeConfig] imageWithSymbolConfiguration:colorConfig];
+        NSImage *gear = [self settingsGearImage];
         NSRect imageRect = NSInsetRect(settingsRect, 4, 4);
-        [gear drawInRect:imageRect
-                fromRect:NSZeroRect
-               operation:NSCompositingOperationSourceOver
-                fraction:1.0
-          respectFlipped:NO
-                   hints:nil];
+        if (gear) {
+            [gear drawInRect:imageRect
+                    fromRect:NSZeroRect
+                   operation:NSCompositingOperationSourceOver
+                    fraction:contentAlpha
+              respectFlipped:NO
+                       hints:nil];
+        }
     }
 
     if (module.style == ChiraModuleStyleProgress) {
@@ -798,20 +815,14 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             [[NSColor colorWithWhite:1 alpha:0.10 * previewAlpha] setFill];
             [[NSBezierPath bezierPathWithRoundedRect:visibleThumbnailRect xRadius:8 yRadius:8] fill];
 
-            if (item.previewImage) {
-                NSSize imageSize = item.previewImage.size;
-                CGFloat scale = MIN(NSWidth(visibleThumbnailRect) / MAX(imageSize.width, 1), NSHeight(visibleThumbnailRect) / MAX(imageSize.height, 1));
-                NSSize drawSize = NSMakeSize(imageSize.width * scale, imageSize.height * scale);
-                NSRect drawRect = NSMakeRect(NSMidX(visibleThumbnailRect) - drawSize.width / 2.0,
-                                             NSMidY(visibleThumbnailRect) - drawSize.height / 2.0,
-                                             drawSize.width,
-                                             drawSize.height);
-                [item.previewImage drawInRect:drawRect
-                                      fromRect:NSZeroRect
-                                     operation:NSCompositingOperationSourceOver
-                                      fraction:previewAlpha
-                                respectFlipped:YES
-                                         hints:nil];
+            NSImage *thumbnailImage = item.thumbnailImage ?: item.previewImage;
+            if (thumbnailImage) {
+                [thumbnailImage drawInRect:visibleThumbnailRect
+                                  fromRect:NSZeroRect
+                                 operation:NSCompositingOperationSourceOver
+                                  fraction:previewAlpha
+                            respectFlipped:YES
+                                     hints:nil];
             }
 
             NSRect imageLabelRect = [self singleLineTextRectForRowRect:rowRect];

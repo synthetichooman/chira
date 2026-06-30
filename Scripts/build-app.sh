@@ -18,7 +18,8 @@ clang \
     -mmacosx-version-min=14.0 \
     -o "$ROOT_DIR/.build/release/Chira" \
     "$ROOT_DIR"/Sources/Chira/*.m \
-    -framework AppKit
+    -framework AppKit \
+    -framework ImageIO
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"

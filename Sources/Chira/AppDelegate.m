@@ -19,6 +19,7 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     NSInteger _lastClipboardChangeCount;
     NSMutableArray<ClipboardHistoryItem *> *_clipboardHistory;
     NSRect _notchHotZone;
+    BOOL _panelIgnoringMouseEvents;
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
@@ -26,6 +27,8 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     [NSUserDefaults.standardUserDefaults registerDefaults:@{
         ChiraMaxVisibleClipboardItemsKey: @5
     }];
+
+    [self cleanupTemporaryClipboardItems];
 
     _clipboardHistory = [NSMutableArray array];
     [self setupPanel];
@@ -57,6 +60,11 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     [_clipboardIngestTimer invalidate];
 }
 
+- (void)cleanupTemporaryClipboardItems {
+    NSString *directoryPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ChiraClipboardItems"];
+    [NSFileManager.defaultManager removeItemAtPath:directoryPath error:nil];
+}
+
 - (void)setupPanel {
     NSSize panelSize = NSMakeSize(560, 440);
     _panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
@@ -69,6 +77,7 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     _panel.hidesOnDeactivate = NO;
     _panel.movable = NO;
     _panel.ignoresMouseEvents = YES;
+    _panelIgnoringMouseEvents = YES;
     _panel.level = CGWindowLevelForKey(kCGStatusWindowLevelKey);
     _panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
         NSWindowCollectionBehaviorFullScreenAuxiliary |
@@ -101,7 +110,10 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
 
 - (void)showIsland {
     [_panel orderFrontRegardless];
-    _panel.ignoresMouseEvents = NO;
+    if (_panelIgnoringMouseEvents) {
+        _panel.ignoresMouseEvents = NO;
+        _panelIgnoringMouseEvents = NO;
+    }
     [_islandView setMode:ChiraIslandModeClipboard transientDuration:1.4];
 }
 
@@ -335,12 +347,22 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     NSPoint localPoint = [_islandView convertPoint:windowPoint fromView:nil];
     BOOL overIsland = [_islandView containsInteractivePoint:localPoint];
 
-    _panel.ignoresMouseEvents = !overIsland;
-    _islandView.hovering = overIsland;
-    _islandView.pointerNearNotch = inHotZone;
+    BOOL shouldIgnoreMouseEvents = !overIsland;
+    if (_panelIgnoringMouseEvents != shouldIgnoreMouseEvents) {
+        _panel.ignoresMouseEvents = shouldIgnoreMouseEvents;
+        _panelIgnoringMouseEvents = shouldIgnoreMouseEvents;
+    }
+    if (_islandView.hovering != overIsland) {
+        _islandView.hovering = overIsland;
+    }
+    if (_islandView.pointerNearNotch != inHotZone) {
+        _islandView.pointerNearNotch = inHotZone;
+    }
 
     if (inHotZone) {
-        [_panel orderFrontRegardless];
+        if (!_panel.isVisible) {
+            [_panel orderFrontRegardless];
+        }
         if (_islandView.mode == ChiraIslandModeIdle) {
             [self showRememberedIslandMode];
         }
