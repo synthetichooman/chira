@@ -341,11 +341,20 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 }
 
 - (NSRect)clipboardExpandedHoverRectForRowRect:(NSRect)rowRect {
-    CGFloat hoverHeight = MAX(24.0, NSHeight(rowRect) - 4.0);
+    NSRect textRect = [self singleLineTextRectForRowRect:rowRect];
+    NSRect continuationRect = [self continuationTextRectBelowTextRect:textRect inRowRect:rowRect];
+    CGFloat textMaxY = NSMaxY(textRect);
+    if (NSHeight(continuationRect) > 1.0) {
+        textMaxY = MAX(textMaxY, NSMaxY(continuationRect));
+    }
+
+    CGFloat y = floor(NSMinY(textRect) - 8.0);
+    CGFloat maxY = ceil(textMaxY + 4.0);
+    CGFloat height = MAX(24.0, maxY - y);
     return NSMakeRect(NSMinX(rowRect) - 8.0,
-                      floor(NSMinY(rowRect) + 2.0),
+                      y,
                       NSWidth(rowRect) + 16.0,
-                      hoverHeight);
+                      height);
 }
 
 - (NSRect)continuationTextRectBelowTextRect:(NSRect)textRect inRowRect:(NSRect)rowRect {
