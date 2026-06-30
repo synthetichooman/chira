@@ -776,13 +776,14 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         id object = items[index];
         ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
         BOOL hovered = _hoveredClipboardIndex == index;
+        BOOL activelyHovered = hovered && _targetHoverExpansion > 0.5;
         BOOL expanded = hovered && _hoverExpansion > 0.45;
         BOOL imageRevealing = hovered && item.image && self.showsImageClipboardPreviews && _hoverExpansion > 0.01;
         BOOL pressed = _pressedClipboardInside && _pressedClipboardIndex == index;
         CGFloat rowHeight = [self clipboardRowHeightForObject:object atIndex:index width:NSWidth(rect)];
         NSRect rowRect = NSMakeRect(NSMinX(rect), rowTop, NSWidth(rect), rowHeight);
 
-        if (hovered) {
+        if (activelyHovered || pressed) {
             NSRect highlightRect;
             if (item.image && self.showsImageClipboardPreviews) {
                 highlightRect = [self clipboardImageHoverRectForRowRect:rowRect];
@@ -790,14 +791,14 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                 CGFloat highlightHeight = MIN(24, rowHeight);
                 highlightRect = [self clipboardHoverRectForRowRect:rowRect height:highlightHeight horizontalInset:8];
             }
-            [[NSColor colorWithWhite:1 alpha:0.07 * contentAlpha * MAX(0.25, _hoverExpansion)] setFill];
+            [[NSColor colorWithWhite:1 alpha:0.07 * contentAlpha] setFill];
             CGFloat radius = MIN(10.0, NSHeight(highlightRect) / 2.0);
             [[NSBezierPath bezierPathWithRoundedRect:highlightRect xRadius:radius yRadius:radius] fill];
         }
 
         NSDictionary *itemAttributes = @{
             NSFontAttributeName: [NSFont systemFontOfSize:12 weight:(pressed ? NSFontWeightSemibold : NSFontWeightMedium)],
-            NSForegroundColorAttributeName: [NSColor colorWithWhite:1 alpha:(pressed || hovered ? 0.96 : 0.64) * contentAlpha]
+            NSForegroundColorAttributeName: [NSColor colorWithWhite:1 alpha:(pressed || activelyHovered ? 0.96 : 0.64) * contentAlpha]
         };
         NSString *line = [self displayLineForClipboardObject:object atIndex:index];
 
