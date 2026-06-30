@@ -357,6 +357,60 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                       height);
 }
 
+- (NSRect)textInkRectForLine:(NSString *)line
+                  inTextRect:(NSRect)textRect
+                  attributes:(NSDictionary *)attributes {
+    if (line.length == 0 || NSWidth(textRect) <= 0 || NSHeight(textRect) <= 0) {
+        return NSZeroRect;
+    }
+
+    NSSize measuredSize = [line sizeWithAttributes:attributes];
+    CGFloat width = MIN(NSWidth(textRect), ceil(measuredSize.width));
+    CGFloat height = MIN(NSHeight(textRect), ceil(measuredSize.height));
+    if (width <= 0 || height <= 0) return NSZeroRect;
+
+    return NSMakeRect(NSMinX(textRect),
+                      floor(NSMinY(textRect)),
+                      width,
+                      height);
+}
+
+- (NSRect)clipboardTextHighlightRectForRowRect:(NSRect)rowRect
+                                   primaryLine:(NSString *)primaryLine
+                              continuationLine:(NSString *)continuationLine
+                                    attributes:(NSDictionary *)attributes {
+    NSRect primaryTextRect = [self singleLineTextRectForRowRect:rowRect];
+    NSRect textBounds = [self textInkRectForLine:primaryLine inTextRect:primaryTextRect attributes:attributes];
+
+    if (continuationLine.length) {
+        NSRect continuationTextRect = [self continuationTextRectBelowTextRect:primaryTextRect inRowRect:rowRect];
+        NSRect continuationBounds = [self textInkRectForLine:continuationLine
+                                                  inTextRect:continuationTextRect
+                                                  attributes:attributes];
+        if (!NSIsEmptyRect(continuationBounds)) {
+            textBounds = NSIsEmptyRect(textBounds) ? continuationBounds : NSUnionRect(textBounds, continuationBounds);
+        }
+    }
+
+    if (NSIsEmptyRect(textBounds)) {
+        textBounds = primaryTextRect;
+    }
+
+    CGFloat horizontalPadding = 8.0;
+    CGFloat topPadding = 8.0;
+    CGFloat bottomPadding = 4.0;
+    NSRect highlightRect = NSMakeRect(floor(NSMinX(textBounds) - horizontalPadding),
+                                      floor(NSMinY(textBounds) - topPadding),
+                                      ceil(NSWidth(textBounds) + horizontalPadding * 2.0),
+                                      ceil(NSHeight(textBounds) + topPadding + bottomPadding));
+    if (NSHeight(highlightRect) < 24.0) {
+        CGFloat extraHeight = 24.0 - NSHeight(highlightRect);
+        highlightRect.origin.y = floor(NSMinY(highlightRect) - extraHeight / 2.0);
+        highlightRect.size.height = 24.0;
+    }
+    return highlightRect;
+}
+
 - (NSRect)continuationTextRectBelowTextRect:(NSRect)textRect inRowRect:(NSRect)rowRect {
     CGFloat y = NSMaxY(textRect) + 2.0;
     CGFloat height = MAX(0, NSMaxY(rowRect) - y - 4.0);
@@ -844,15 +898,35 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         BOOL imageRevealing = expanding && item.image && self.showsImageClipboardPreviews && reveal > 0.01;
         NSRect rowRect = NSMakeRect(NSMinX(rect), rowTop, NSWidth(rect), rowHeight);
 
+        CGFloat itemTextAlpha = (pressed || activelyHovered ? 0.96 : 0.64) * contentAlpha;
+        NSDictionary *itemAttributes = @{
+            NSFontAttributeName: [NSFont systemFontOfSize:12 weight:(pressed ? NSFontWeightSemibold : NSFontWeightMedium)],
+            NSForegroundColorAttributeName: [NSColor colorWithWhite:1 alpha:itemTextAlpha]
+        };
+        NSString *line = [self displayLineForClipboardObject:object atIndex:index];
+        BOOL textExpanding = expanding && !item.image && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)];
+        NSString *expandedLine = textExpanding ? [self expandedLineForClipboardObject:object atIndex:index] : nil;
+        NSString *continuationLine = nil;
+        if (textExpanding) {
+            continuationLine = [self continuationLineForExpandedLine:expandedLine
+                                                               width:NSWidth(rowRect)
+                                                          attributes:itemAttributes];
+        }
+
         if (activelyHovered || pressed) {
             NSRect highlightRect;
             if (item.image && self.showsImageClipboardPreviews && expanding) {
                 highlightRect = [self clipboardImageHoverRectForRowRect:rowRect];
-            } else if (expanding) {
-                highlightRect = [self clipboardExpandedHoverRectForRowRect:rowRect];
+            } else if (textExpanding) {
+                highlightRect = [self clipboardTextHighlightRectForRowRect:rowRect
+                                                                primaryLine:expandedLine
+                                                           continuationLine:(reveal > 0.01 ? continuationLine : nil)
+                                                                 attributes:itemAttributes];
             } else {
-                CGFloat highlightHeight = MIN(24, rowHeight);
-                highlightRect = [self clipboardHoverRectForRowRect:rowRect height:highlightHeight horizontalInset:8];
+                highlightRect = [self clipboardTextHighlightRectForRowRect:rowRect
+                                                                primaryLine:line
+                                                           continuationLine:nil
+                                                                 attributes:itemAttributes];
             }
             CGFloat highlightAlpha = 0.07 * contentAlpha;
             if (expanding && !pressed) {
@@ -862,13 +936,6 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             CGFloat radius = MIN(10.0, NSHeight(highlightRect) / 2.0);
             [[NSBezierPath bezierPathWithRoundedRect:highlightRect xRadius:radius yRadius:radius] fill];
         }
-
-        CGFloat itemTextAlpha = (pressed || activelyHovered ? 0.96 : 0.64) * contentAlpha;
-        NSDictionary *itemAttributes = @{
-            NSFontAttributeName: [NSFont systemFontOfSize:12 weight:(pressed ? NSFontWeightSemibold : NSFontWeightMedium)],
-            NSForegroundColorAttributeName: [NSColor colorWithWhite:1 alpha:itemTextAlpha]
-        };
-        NSString *line = [self displayLineForClipboardObject:object atIndex:index];
 
         if (imageRevealing) {
             CGFloat thumbnailSize = 58;
@@ -900,14 +967,9 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             [line drawWithRect:imageLabelRect
                        options:NSStringDrawingTruncatesLastVisibleLine
                     attributes:itemAttributes];
-        } else if (expanding && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
+        } else if (textExpanding) {
             NSRect itemRect = [self singleLineTextRectForRowRect:rowRect];
-            NSString *expandedLine = [self expandedLineForClipboardObject:object atIndex:index];
             [expandedLine drawWithRect:itemRect options:NSStringDrawingTruncatesLastVisibleLine attributes:itemAttributes];
-
-            NSString *continuationLine = [self continuationLineForExpandedLine:expandedLine
-                                                                         width:NSWidth(rowRect)
-                                                                    attributes:itemAttributes];
 
             if (continuationLine.length && reveal > 0.01) {
                 NSRect continuationRect = [self continuationTextRectBelowTextRect:itemRect inRowRect:rowRect];
