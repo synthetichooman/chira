@@ -340,6 +340,20 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                       hoverHeight);
 }
 
+- (NSRect)clipboardExpandedHoverRectForRowRect:(NSRect)rowRect {
+    CGFloat hoverHeight = MAX(24.0, NSHeight(rowRect) - 4.0);
+    return NSMakeRect(NSMinX(rowRect) - 8.0,
+                      floor(NSMinY(rowRect) + 2.0),
+                      NSWidth(rowRect) + 16.0,
+                      hoverHeight);
+}
+
+- (NSRect)continuationTextRectBelowTextRect:(NSRect)textRect inRowRect:(NSRect)rowRect {
+    CGFloat y = NSMaxY(textRect) + 2.0;
+    CGFloat height = MAX(0, NSMaxY(rowRect) - y - 4.0);
+    return NSMakeRect(NSMinX(textRect), y, NSWidth(textRect), MIN(ChiraClipboardRowTextHeight, height));
+}
+
 - (ClipboardHistoryItem *)clipboardItemFromObject:(id)object {
     return [object isKindOfClass:ClipboardHistoryItem.class] ? object : nil;
 }
@@ -385,8 +399,17 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
     if (low >= line.length) return @"";
 
-    NSRange safeRange = [line rangeOfComposedCharacterSequenceAtIndex:low];
-    NSUInteger cutIndex = MIN(NSMaxRange(safeRange), line.length);
+    NSUInteger cutIndex = low;
+    NSRange searchRange = NSMakeRange(0, cutIndex);
+    NSRange whitespaceRange = [line rangeOfCharacterFromSet:NSCharacterSet.whitespaceCharacterSet
+                                                    options:NSBackwardsSearch
+                                                      range:searchRange];
+    if (whitespaceRange.location != NSNotFound && cutIndex - whitespaceRange.location < 18) {
+        cutIndex = NSMaxRange(whitespaceRange);
+    } else if (cutIndex > 0 && cutIndex < line.length) {
+        NSRange safeRange = [line rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, cutIndex)];
+        cutIndex = MIN(NSMaxRange(safeRange), line.length);
+    }
     NSString *tail = [line substringFromIndex:cutIndex];
     return [tail stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
 }
@@ -494,8 +517,10 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         BOOL reservesImagePreviewWidth = [self clipboardItemFromObject:object].image && self.showsImageClipboardPreviews;
         CGFloat targetWidth = MIN(contentWidth, MAX(textWidth + 8, reservesImagePreviewWidth ? 220 : 0));
         NSRect rowRect = NSMakeRect(contentX - 4, rowTop, targetWidth, rowHeight);
-        CGFloat targetHeight = MIN(MAX(22, rowHeight - 6), rowHeight);
-        NSRect targetRect = [self clipboardHoverRectForRowRect:rowRect height:targetHeight horizontalInset:0];
+        BOOL expandedTarget = rowHeight > ChiraClipboardBaseRowHeight + 1.0;
+        NSRect targetRect = expandedTarget
+            ? [self clipboardExpandedHoverRectForRowRect:rowRect]
+            : [self clipboardHoverRectForRowRect:rowRect height:24 horizontalInset:0];
         targetRect.origin.x = NSMinX(rowRect);
         targetRect.size.width = NSWidth(rowRect);
         [targets addObject:@{
@@ -813,6 +838,8 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             NSRect highlightRect;
             if (item.image && self.showsImageClipboardPreviews) {
                 highlightRect = [self clipboardImageHoverRectForRowRect:rowRect];
+            } else if (expanded) {
+                highlightRect = [self clipboardExpandedHoverRectForRowRect:rowRect];
             } else {
                 CGFloat highlightHeight = MIN(24, rowHeight);
                 highlightRect = [self clipboardHoverRectForRowRect:rowRect height:highlightHeight horizontalInset:8];
@@ -861,27 +888,18 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                     attributes:itemAttributes];
         } else if (expanded && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
             NSRect itemRect = [self singleLineTextRectForRowRect:rowRect];
-            [line drawWithRect:itemRect options:NSStringDrawingTruncatesLastVisibleLine attributes:itemAttributes];
-
-            NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
-            paragraph.lineBreakMode = NSLineBreakByCharWrapping;
-            paragraph.lineSpacing = 1.5;
-            NSMutableDictionary *expandedAttributes = [itemAttributes mutableCopy];
-            expandedAttributes[NSParagraphStyleAttributeName] = paragraph;
             NSString *expandedLine = [self expandedLineForClipboardObject:object atIndex:index];
+            [expandedLine drawWithRect:itemRect options:NSStringDrawingTruncatesLastVisibleLine attributes:itemAttributes];
+
             NSString *continuationLine = [self continuationLineForExpandedLine:expandedLine
                                                                          width:NSWidth(rowRect)
                                                                     attributes:itemAttributes];
 
             if (continuationLine.length) {
-                CGFloat continuationHeight = MAX(0, NSHeight(rowRect) - ChiraClipboardBaseRowHeight - 4.0);
-                NSRect continuationRect = NSMakeRect(NSMinX(rowRect),
-                                                     NSMinY(rowRect) + ChiraClipboardBaseRowHeight - 1.0,
-                                                     NSWidth(rowRect),
-                                                     continuationHeight);
+                NSRect continuationRect = [self continuationTextRectBelowTextRect:itemRect inRowRect:rowRect];
                 [continuationLine drawWithRect:continuationRect
-                                       options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingTruncatesLastVisibleLine
-                                    attributes:expandedAttributes];
+                                       options:NSStringDrawingTruncatesLastVisibleLine
+                                    attributes:itemAttributes];
             }
         } else {
             NSRect itemRect = [self singleLineTextRectForRowRect:rowRect];
