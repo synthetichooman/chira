@@ -15,7 +15,8 @@ static const CGFloat ChiraHeaderButtonSize = 24.0;
 static const CGFloat ChiraHeaderIconTextBaselineOffset = -13.0;
 static const CGFloat ChiraClipboardRowTextHeight = 18.0;
 static const CGFloat ChiraClipboardTitleListGap = 12.0;
-static const CGFloat ChiraIslandBottomKeepAlivePadding = 56.0;
+static const CGFloat ChiraClipboardContentBottomPadding = 12.0;
+static const CGFloat ChiraIslandBottomKeepAlivePadding = 75.0;
 static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
 
 static CGFloat ChiraSmoothStep(CGFloat value) {
@@ -340,6 +341,17 @@ typedef struct {
 - (CGFloat)clipboardListTopForIslandRect:(NSRect)rect horizontalPadding:(CGFloat)horizontalPadding {
     NSRect titleRect = [self headerTitleRectInIslandRect:rect horizontalPadding:horizontalPadding reservesSettings:YES];
     return NSMaxY(titleRect) + ChiraClipboardTitleListGap;
+}
+
+- (CGFloat)hiddenIslandHeight {
+    return self.hasNotch ? MAX(1, self.topSafeInset - 2) : ChiraFloatingHiddenHeight;
+}
+
+- (CGFloat)clipboardExpandedContentHeightForRowsHeight:(CGFloat)rowsHeight {
+    CGFloat listTop = [self clipboardListTopForIslandRect:NSMakeRect(0, 0, 470, 200)
+                                        horizontalPadding:40];
+    CGFloat visibleHeight = listTop + rowsHeight + ChiraClipboardContentBottomPadding;
+    return MAX(0, visibleHeight - [self hiddenIslandHeight]);
 }
 
 - (NSRect)settingsButtonRectInIslandRect:(NSRect)rect {
@@ -734,7 +746,7 @@ typedef struct {
 - (NSRect)currentIslandRect {
     CGFloat detectedNotchWidth = self.notchWidth > 0 ? self.notchWidth : ChiraMacBookPro14NotchWidth;
     CGFloat hiddenWidth = self.hasNotch ? MAX(ChiraMacBookPro14NotchWidth, detectedNotchWidth) : ChiraFloatingHiddenWidth;
-    CGFloat hiddenHeight = self.hasNotch ? MAX(1, self.topSafeInset - 2) : ChiraFloatingHiddenHeight;
+    CGFloat hiddenHeight = [self hiddenIslandHeight];
     CGFloat expandedWidth = 470;
     CGFloat expandedHeight = hiddenHeight + [self expandedContentHeight];
     CGFloat width = hiddenWidth + (expandedWidth - hiddenWidth) * _progress;
@@ -767,7 +779,7 @@ typedef struct {
         for (NSInteger index = 0; index < rowCount; index++) {
             rowsHeight += [self clipboardRowHeightForObject:module.items[index] atIndex:index width:contentWidth];
         }
-        return 78 + rowsHeight;
+        return [self clipboardExpandedContentHeightForRowsHeight:rowsHeight];
     }
     return 122;
 }
@@ -788,7 +800,7 @@ typedef struct {
             ? [self expandedClipboardRowHeightForObject:object atIndex:index width:contentWidth]
             : ChiraClipboardBaseRowHeight;
     }
-    return 78 + rowsHeight;
+    return [self clipboardExpandedContentHeightForRowsHeight:rowsHeight];
 }
 
 - (BOOL)containsInteractivePoint:(NSPoint)point {
