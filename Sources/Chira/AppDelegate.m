@@ -34,6 +34,7 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
     NSInteger _lastClipboardChangeCount;
     NSMutableArray<ClipboardHistoryItem *> *_clipboardHistory;
     NSRect _notchHotZone;
+    NSTimeInterval _transientIslandPresentationUntil;
     BOOL _panelIgnoringMouseEvents;
     BOOL _pointerTimerActive;
     BOOL _loadingInitialClipboardItem;
@@ -56,6 +57,7 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
     _lastClipboardChangeCount = NSPasteboard.generalPasteboard.changeCount;
     [self insertPatchNotesIfNeeded];
     [self syncClipboardItems];
+    [self presentClipboardIslandTransientlyForDuration:3.0];
 
     [self schedulePointerTimerActive:NO];
     _clipboardTimer = [NSTimer scheduledTimerWithTimeInterval:ChiraClipboardPollingInterval
@@ -146,6 +148,12 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
         _panelIgnoringMouseEvents = NO;
     }
     [_islandView setMode:ChiraIslandModeClipboard transientDuration:1.4];
+}
+
+- (void)presentClipboardIslandTransientlyForDuration:(NSTimeInterval)duration {
+    _transientIslandPresentationUntil = NSDate.timeIntervalSinceReferenceDate + duration;
+    [_panel orderFrontRegardless];
+    [_islandView setMode:ChiraIslandModeClipboard transientDuration:duration];
 }
 
 - (NSInteger)maxVisibleClipboardItems {
@@ -504,6 +512,9 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
     if (!_panel.isVisible) {
         [_panel orderFrontRegardless];
     }
+    if (_islandView.mode == ChiraIslandModeIdle) {
+        [self presentClipboardIslandTransientlyForDuration:1.1];
+    }
     [_islandView playClipboardIngestPulse];
 
     [_clipboardIngestTimer invalidate];
@@ -562,7 +573,9 @@ static NSString * const ChiraLastPatchNotesVersionKey = @"lastPatchNotesVersion"
         if (_islandView.mode == ChiraIslandModeIdle) {
             [self showRememberedIslandMode];
         }
-    } else if (!overIsland && _islandView.mode == ChiraIslandModeClipboard) {
+    } else if (!overIsland &&
+               _islandView.mode == ChiraIslandModeClipboard &&
+               NSDate.timeIntervalSinceReferenceDate >= _transientIslandPresentationUntil) {
         [_islandView setMode:ChiraIslandModeIdle transientDuration:0];
     }
 

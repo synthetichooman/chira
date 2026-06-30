@@ -2,7 +2,7 @@
 
 Chira is a lightweight macOS clipboard history overlay that lives around the top-center notch area.
 
-Version: `0.1`
+Version: `0.1.1`
 
 ## Run
 

@@ -1,6 +1,6 @@
 {
   "name": "chira",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Lightweight native macOS clipboard history overlay for the top-center notch area.",
   "scripts": {
