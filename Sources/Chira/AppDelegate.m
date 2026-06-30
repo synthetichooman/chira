@@ -4,6 +4,7 @@
 static const NSTimeInterval ChiraClipboardIngestDelay = 0.42;
 static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
 static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboardItems";
+static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard";
 
 @implementation AppDelegate {
     NSPanel *_panel;
@@ -15,6 +16,7 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     NSTimer *_clipboardIngestTimer;
     NSTextField *_settingsCountValueLabel;
     NSStepper *_settingsCountStepper;
+    NSButton *_settingsImagePreviewCheckbox;
     NSTimeInterval _clipboardPollingResumeTime;
     NSInteger _lastClipboardChangeCount;
     NSMutableArray<ClipboardHistoryItem *> *_clipboardHistory;
@@ -25,7 +27,8 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     [NSUserDefaults.standardUserDefaults registerDefaults:@{
-        ChiraMaxVisibleClipboardItemsKey: @5
+        ChiraMaxVisibleClipboardItemsKey: @5,
+        ChiraPreviewImageClipboardKey: @NO
     }];
 
     [self cleanupTemporaryClipboardItems];
@@ -87,6 +90,7 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     _islandView = [[IslandView alloc] initWithFrame:NSMakeRect(0, 0, panelSize.width, panelSize.height)];
     _islandView.delegate = self;
     _islandView.maxVisibleClipboardItems = [self maxVisibleClipboardItems];
+    _islandView.showsImageClipboardPreviews = [self showsImageClipboardPreviews];
     _panel.contentView = _islandView;
 
     [self recenterIsland];
@@ -122,6 +126,10 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     return MAX(1, MIN(8, value > 0 ? value : 5));
 }
 
+- (BOOL)showsImageClipboardPreviews {
+    return [NSUserDefaults.standardUserDefaults boolForKey:ChiraPreviewImageClipboardKey];
+}
+
 - (NSTextField *)settingsLabelWithString:(NSString *)string frame:(NSRect)frame {
     NSTextField *label = [NSTextField labelWithString:string];
     label.frame = frame;
@@ -142,7 +150,7 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
 - (void)setupSettingsPanelIfNeeded {
     if (_settingsPanel) return;
 
-    NSSize panelSize = NSMakeSize(300, 178);
+    NSSize panelSize = NSMakeSize(300, 206);
     _settingsPanel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, panelSize.width, panelSize.height)
                                                 styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                                                   backing:NSBackingStoreBuffered
@@ -166,23 +174,23 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     _settingsPanel.contentView = contentView;
 
     NSTextField *title = [NSTextField labelWithString:@"Chira"];
-    title.frame = NSMakeRect(20, 140, 180, 22);
+    title.frame = NSMakeRect(20, 168, 180, 22);
     title.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
     title.textColor = NSColor.labelColor;
     [contentView addSubview:title];
 
     NSTextField *subtitle = [NSTextField labelWithString:@"Clipboard island settings"];
-    subtitle.frame = NSMakeRect(20, 121, 210, 18);
+    subtitle.frame = NSMakeRect(20, 149, 210, 18);
     subtitle.font = [NSFont systemFontOfSize:12 weight:NSFontWeightRegular];
     subtitle.textColor = NSColor.secondaryLabelColor;
     [contentView addSubview:subtitle];
 
-    [contentView addSubview:[self settingsLabelWithString:@"Visible clipboard items" frame:NSMakeRect(20, 88, 170, 18)]];
+    [contentView addSubview:[self settingsLabelWithString:@"Visible clipboard items" frame:NSMakeRect(20, 116, 170, 18)]];
 
-    _settingsCountValueLabel = [self settingsValueLabelWithString:@"" frame:NSMakeRect(202, 86, 28, 22)];
+    _settingsCountValueLabel = [self settingsValueLabelWithString:@"" frame:NSMakeRect(202, 114, 28, 22)];
     [contentView addSubview:_settingsCountValueLabel];
 
-    _settingsCountStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(242, 82, 18, 28)];
+    _settingsCountStepper = [[NSStepper alloc] initWithFrame:NSMakeRect(242, 110, 18, 28)];
     _settingsCountStepper.minValue = 1;
     _settingsCountStepper.maxValue = 8;
     _settingsCountStepper.increment = 1;
@@ -190,15 +198,22 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     _settingsCountStepper.action = @selector(settingsCountStepperChanged:);
     [contentView addSubview:_settingsCountStepper];
 
-    NSBox *divider = [[NSBox alloc] initWithFrame:NSMakeRect(20, 68, 260, 1)];
+    _settingsImagePreviewCheckbox = [NSButton checkboxWithTitle:@"Show image previews on hover"
+                                                         target:self
+                                                         action:@selector(settingsImagePreviewChanged:)];
+    _settingsImagePreviewCheckbox.frame = NSMakeRect(16, 80, 260, 24);
+    _settingsImagePreviewCheckbox.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+    [contentView addSubview:_settingsImagePreviewCheckbox];
+
+    NSBox *divider = [[NSBox alloc] initWithFrame:NSMakeRect(20, 62, 260, 1)];
     divider.boxType = NSBoxCustom;
     divider.transparent = NO;
     divider.fillColor = NSColor.separatorColor;
     [contentView addSubview:divider];
 
-    [contentView addSubview:[self settingsLabelWithString:@"Developer: kimminpyo" frame:NSMakeRect(20, 40, 240, 18)]];
+    [contentView addSubview:[self settingsLabelWithString:@"Developer: kimminpyo" frame:NSMakeRect(20, 34, 240, 18)]];
 
-    NSTextField *github = [self settingsLabelWithString:@"GitHub: synthetichooman/chira" frame:NSMakeRect(20, 18, 250, 18)];
+    NSTextField *github = [self settingsLabelWithString:@"GitHub: synthetichooman/chira" frame:NSMakeRect(20, 12, 250, 18)];
     github.selectable = YES;
     [contentView addSubview:github];
 }
@@ -207,6 +222,9 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     NSInteger count = [self maxVisibleClipboardItems];
     _settingsCountStepper.integerValue = count;
     _settingsCountValueLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)count];
+    _settingsImagePreviewCheckbox.state = [self showsImageClipboardPreviews]
+        ? NSControlStateValueOn
+        : NSControlStateValueOff;
 }
 
 - (void)showSettingsPanel {
@@ -238,6 +256,24 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
     _islandView.maxVisibleClipboardItems = count;
     [self refreshSettingsPanelValues];
     [_islandView setNeedsDisplay:YES];
+}
+
+- (void)settingsImagePreviewChanged:(NSButton *)sender {
+    BOOL enabled = sender.state == NSControlStateValueOn;
+    [NSUserDefaults.standardUserDefaults setBool:enabled forKey:ChiraPreviewImageClipboardKey];
+    _islandView.showsImageClipboardPreviews = enabled;
+    if (!enabled) {
+        [self clearImagePreviewCaches];
+    }
+    [_islandView setNeedsDisplay:YES];
+}
+
+- (void)clearImagePreviewCaches {
+    for (ClipboardHistoryItem *item in _clipboardHistory) {
+        if (!item.image) continue;
+        item.previewImage = nil;
+        item.thumbnailImage = nil;
+    }
 }
 
 - (void)closeSettingsPanel:(id)sender {
@@ -316,7 +352,8 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
 - (void)ingestClipboardAfterPulse {
     _clipboardIngestTimer = nil;
 
-    ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:NSPasteboard.generalPasteboard];
+    ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:NSPasteboard.generalPasteboard
+                                                          preparesPreview:[self showsImageClipboardPreviews]];
     if (!item) return;
 
     [self addClipboardHistoryItem:item];
@@ -384,7 +421,8 @@ static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboard
 
 - (void)showRememberedIslandMode {
     if (_clipboardHistory.count == 0) {
-        ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:NSPasteboard.generalPasteboard];
+        ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:NSPasteboard.generalPasteboard
+                                                              preparesPreview:[self showsImageClipboardPreviews]];
         if (item) {
             [self addClipboardHistoryItem:item];
         }

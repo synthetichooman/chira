@@ -216,7 +216,7 @@ static NSString *ChiraFileExtensionForPasteboardType(NSPasteboardType type) {
     return @"image";
 }
 
-static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard, NSURL *fileURL) {
+static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard, NSURL *fileURL, BOOL preparesPreview) {
     if (!fileURL.isFileURL || !ChiraIsImageExtension(fileURL.pathExtension)) return nil;
 
     NSData *data = [NSData dataWithContentsOfURL:fileURL options:NSDataReadingMappedIfSafe error:nil];
@@ -233,8 +233,10 @@ static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard,
     item.dataValue = data;
     item.pasteboardType = type;
     item.image = YES;
-    item.thumbnailImage = ChiraThumbnailImageForImageData(data);
-    if (!item.thumbnailImage && image) {
+    if (preparesPreview) {
+        item.thumbnailImage = ChiraThumbnailImageForImageData(data);
+    }
+    if (preparesPreview && !item.thumbnailImage && image) {
         item.previewImage = image;
         [item prepareThumbnailIfNeeded];
     }
@@ -296,7 +298,11 @@ static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard,
 }
 
 + (instancetype)itemFromPasteboard:(NSPasteboard *)pasteboard {
-    ClipboardHistoryItem *fileImageItem = ChiraImageItemFromFileURL(pasteboard, ChiraFirstPasteboardURL(pasteboard, YES));
+    return [self itemFromPasteboard:pasteboard preparesPreview:YES];
+}
+
++ (instancetype)itemFromPasteboard:(NSPasteboard *)pasteboard preparesPreview:(BOOL)preparesPreview {
+    ClipboardHistoryItem *fileImageItem = ChiraImageItemFromFileURL(pasteboard, ChiraFirstPasteboardURL(pasteboard, YES), preparesPreview);
     if (fileImageItem) return fileImageItem;
 
     NSData *pngData = [pasteboard dataForType:NSPasteboardTypePNG];
@@ -312,8 +318,10 @@ static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard,
             item.dataValue = tiffData;
             item.pasteboardType = NSPasteboardTypeTIFF;
         }
-        item.thumbnailImage = ChiraThumbnailImageForImageData(item.dataValue);
-        if (!item.thumbnailImage) {
+        if (preparesPreview) {
+            item.thumbnailImage = ChiraThumbnailImageForImageData(item.dataValue);
+        }
+        if (preparesPreview && !item.thumbnailImage) {
             item.previewImage = [[NSImage alloc] initWithData:item.dataValue];
             [item prepareThumbnailIfNeeded];
         }
@@ -338,7 +346,9 @@ static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard,
         item.previewImage = pasteboardImage;
         item.image = YES;
         item.displayText = ChiraDisplayTextForImage(pasteboard, pasteboardImageData, pasteboardImageType, pasteboardImage);
-        [item prepareThumbnailIfNeeded];
+        if (preparesPreview) {
+            [item prepareThumbnailIfNeeded];
+        }
         if (item.thumbnailImage) item.previewImage = nil;
         [item recordImageDataIdentityIfNeeded];
         [item spillImageDataToDiskIfNeeded];
@@ -372,7 +382,18 @@ static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard,
 }
 
 - (void)prepareThumbnailIfNeeded {
-    if (!self.image || self.thumbnailImage || !self.previewImage) return;
+    if (!self.image || self.thumbnailImage) return;
+
+    NSData *data = self.dataValue;
+    if (!data.length && self.dataFileURL) {
+        data = [NSData dataWithContentsOfURL:self.dataFileURL options:NSDataReadingMappedIfSafe error:nil];
+    }
+    if (data.length) {
+        self.thumbnailImage = ChiraThumbnailImageForImageData(data);
+        if (self.thumbnailImage) return;
+    }
+
+    if (!self.previewImage) return;
 
     self.thumbnailImage = ChiraThumbnailImageForImage(self.previewImage);
 }

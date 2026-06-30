@@ -21,6 +21,7 @@
 @property (nonatomic) CGFloat notchWidth;
 @property (nonatomic) BOOL hasNotch;
 @property (nonatomic) NSInteger maxVisibleClipboardItems;
+@property (nonatomic) BOOL showsImageClipboardPreviews;
 
 - (void)setMode:(ChiraIslandMode)mode transientDuration:(NSTimeInterval)duration;
 - (void)playClipboardIngestPulse;

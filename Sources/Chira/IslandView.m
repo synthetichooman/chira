@@ -62,6 +62,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
     _notchWidth = 0;
     _hasNotch = NO;
     _maxVisibleClipboardItems = 5;
+    _showsImageClipboardPreviews = NO;
     _ingestPulse = 0;
     _lastInvalidatedIslandRect = NSZeroRect;
     _pressedClipboardIndex = -1;
@@ -366,7 +367,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
 - (BOOL)clipboardTextNeedsExpansion:(id)object atIndex:(NSInteger)index width:(CGFloat)width {
     ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
-    if (item.image) return YES;
+    if (item.image) return self.showsImageClipboardPreviews;
 
     NSDictionary *attributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:12 weight:NSFontWeightMedium]
@@ -384,7 +385,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
 - (CGFloat)expandedClipboardRowHeightForObject:(id)object atIndex:(NSInteger)index width:(CGFloat)width {
     ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
-    if (item.image) {
+    if (item.image && self.showsImageClipboardPreviews) {
         return ChiraClipboardImageHoverRowHeight;
     }
     if ([self clipboardTextNeedsExpansion:object atIndex:index width:width]) {
@@ -399,6 +400,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
     ClipboardHistoryItem *item = [self clipboardItemFromObject:module.items[_hoveredClipboardIndex]];
     if (!item.image) return;
+    if (!self.showsImageClipboardPreviews) return;
     if (item.thumbnailImage) return;
 
     if (!item.previewImage && item.dataValue.length) {
@@ -463,7 +465,8 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         CGFloat rowHeight = [self clipboardRowHeightForObject:object atIndex:index width:contentWidth];
         NSString *line = [self displayLineForClipboardObject:object atIndex:index];
         CGFloat textWidth = ceil([line sizeWithAttributes:targetAttributes].width);
-        CGFloat targetWidth = MIN(contentWidth, MAX(textWidth + 8, [self clipboardItemFromObject:object].image ? 220 : 0));
+        BOOL reservesImagePreviewWidth = [self clipboardItemFromObject:object].image && self.showsImageClipboardPreviews;
+        CGFloat targetWidth = MIN(contentWidth, MAX(textWidth + 8, reservesImagePreviewWidth ? 220 : 0));
         NSRect rowRect = NSMakeRect(contentX - 4, rowTop, targetWidth, rowHeight);
         CGFloat targetHeight = MIN(MAX(22, rowHeight - 6), rowHeight);
         NSRect targetRect = [self clipboardHoverRectForRowRect:rowRect height:targetHeight horizontalInset:0];
@@ -774,14 +777,14 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
         BOOL hovered = _hoveredClipboardIndex == index;
         BOOL expanded = hovered && _hoverExpansion > 0.45;
-        BOOL imageRevealing = hovered && item.image && _hoverExpansion > 0.01;
+        BOOL imageRevealing = hovered && item.image && self.showsImageClipboardPreviews && _hoverExpansion > 0.01;
         BOOL pressed = _pressedClipboardInside && _pressedClipboardIndex == index;
         CGFloat rowHeight = [self clipboardRowHeightForObject:object atIndex:index width:NSWidth(rect)];
         NSRect rowRect = NSMakeRect(NSMinX(rect), rowTop, NSWidth(rect), rowHeight);
 
         if (hovered) {
             NSRect highlightRect;
-            if (item.image) {
+            if (item.image && self.showsImageClipboardPreviews) {
                 highlightRect = [self clipboardImageHoverRectForRowRect:rowRect];
             } else {
                 CGFloat highlightHeight = MIN(24, rowHeight);
