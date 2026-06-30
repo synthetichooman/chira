@@ -12,9 +12,16 @@ Build and open Chira:
 Scripts/run-app.sh
 ```
 
-open it yourself:
+Or use npm as a command wrapper:
 
 ```sh
+npm start
+```
+
+Or build the app and open it yourself:
+
+```sh
+Scripts/build-app.sh
 open .build/Chira.app
 ```
 
@@ -28,12 +35,19 @@ Build a local DMG:
 Scripts/package-dmg.sh
 ```
 
+With npm:
+
+```sh
+npm run dmg
+```
+
 The packaged app is written to `.build/Chira.app`, and the DMG is written to `.build/Chira-0.1.dmg`.
 
 For a quick local smoke check:
 
 ```sh
 Scripts/smoke-check.sh
+npm run smoke
 ```
 
 ## v0.1
@@ -61,6 +75,8 @@ Scripts/
   package-dmg.sh         Build .build/Chira-0.1.dmg
   run-app.sh             Build, relaunch, and open Chira locally
   smoke-check.sh         Build, launch, report RSS/CPU, and capture a screenshot
+
+package.json             npm command wrappers for build/start/dmg/smoke
 
 Sources/Chira/
   AppDelegate.h          App delegate interface
