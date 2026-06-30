@@ -1,5 +1,6 @@
 #import "AppDelegate.h"
 #import "ClipboardHistoryItem.h"
+#import <CoreGraphics/CoreGraphics.h>
 
 static const NSTimeInterval ChiraClipboardIngestDelay = 0.42;
 static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
@@ -281,15 +282,19 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     [_settingsPanel orderOut:nil];
 }
 
-- (void)recenterIsland {
-    NSScreen *screen = NSScreen.mainScreen;
-    NSPoint mouse = NSEvent.mouseLocation;
-    for (NSScreen *candidate in NSScreen.screens) {
-        if (NSPointInRect(mouse, candidate.frame)) {
-            screen = candidate;
-            break;
+- (NSScreen *)builtInScreen {
+    for (NSScreen *screen in NSScreen.screens) {
+        NSNumber *screenNumber = screen.deviceDescription[@"NSScreenNumber"];
+        CGDirectDisplayID displayID = (CGDirectDisplayID)screenNumber.unsignedIntValue;
+        if (displayID != 0 && CGDisplayIsBuiltin(displayID)) {
+            return screen;
         }
     }
+    return NSScreen.mainScreen;
+}
+
+- (void)recenterIsland {
+    NSScreen *screen = [self builtInScreen];
 
     NSSize size = _panel.frame.size;
     NSEdgeInsets safeInsets = screen.safeAreaInsets;
