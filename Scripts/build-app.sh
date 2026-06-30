@@ -9,6 +9,34 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 cd "$ROOT_DIR"
 
+build_app_pids() {
+    local executable="$MACOS_DIR/Chira"
+    { pgrep -x Chira 2>/dev/null || true; } | while read -r pid; do
+        local command_path
+        command_path="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
+        if [[ "$command_path" == "$executable" ]]; then
+            echo "$pid"
+        fi
+    done
+}
+
+terminate_existing_build_app() {
+    local pids
+    pids="$(build_app_pids)"
+    if [[ -z "$pids" ]]; then
+        return
+    fi
+
+    while read -r pid; do
+        [[ -n "$pid" ]] && kill "$pid" >/dev/null 2>&1 || true
+    done <<< "$pids"
+
+    for _ in 1 2 3 4 5; do
+        [[ -z "$(build_app_pids)" ]] && break
+        sleep 0.2
+    done
+}
+
 GIT_SHA="unknown"
 if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || printf unknown)"
@@ -31,13 +59,7 @@ clang \
     -framework ImageIO \
     -framework ServiceManagement
 
-if pgrep -x Chira >/dev/null; then
-    pkill -x Chira >/dev/null 2>&1 || true
-    for _ in 1 2 3 4 5; do
-        pgrep -x Chira >/dev/null || break
-        sleep 0.2
-    done
-fi
+terminate_existing_build_app
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
