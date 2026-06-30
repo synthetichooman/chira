@@ -61,10 +61,11 @@ typedef struct {
     NSRect _lastInvalidatedIslandRect;
     NSInteger _pressedClipboardIndex;
     NSInteger _hoveredClipboardIndex;
+    NSInteger _expandingClipboardIndex;
     CGFloat _hoverExpansion;
-    CGFloat _targetHoverExpansion;
     BOOL _pressedClipboardInside;
     NSImage *_settingsGearImage;
+    NSMutableIndexSet *_sessionExpandedClipboardIndexes;
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
@@ -83,9 +84,10 @@ typedef struct {
     _lastInvalidatedIslandRect = NSZeroRect;
     _pressedClipboardIndex = -1;
     _hoveredClipboardIndex = -1;
+    _expandingClipboardIndex = -1;
     _hoverExpansion = 0;
-    _targetHoverExpansion = 0;
     _pressedClipboardInside = NO;
+    _sessionExpandedClipboardIndexes = [NSMutableIndexSet indexSet];
     self.wantsLayer = YES;
     self.layer.backgroundColor = NSColor.clearColor.CGColor;
     return self;
@@ -178,35 +180,32 @@ typedef struct {
         [self clearHoveredClipboardIndex];
         return;
     }
-    if (index == _hoveredClipboardIndex) {
-        if (_targetHoverExpansion < 1.0) {
-            _targetHoverExpansion = 1.0;
-            [self startAnimationTimerIfNeeded];
-            [self invalidateIslandDisplay];
-        }
-        return;
+    BOOL hoverChanged = index != _hoveredClipboardIndex;
+    _hoveredClipboardIndex = index;
+
+    BOOL startsExpansion = ![_sessionExpandedClipboardIndexes containsIndex:index];
+    if (startsExpansion) {
+        [_sessionExpandedClipboardIndexes addIndex:index];
+        _expandingClipboardIndex = index;
+        _hoverExpansion = 0;
+        [self preparePreviewForHoveredClipboardItem];
+        [self startAnimationTimerIfNeeded];
     }
 
-    _hoveredClipboardIndex = index;
-    _targetHoverExpansion = 1.0;
-    [self preparePreviewForHoveredClipboardItem];
-    [self startAnimationTimerIfNeeded];
-    [self invalidateIslandDisplay];
+    if (hoverChanged || startsExpansion) {
+        [self invalidateIslandDisplay];
+    }
 }
 
 - (void)clearHoveredClipboardIndex {
-    if (_hoveredClipboardIndex < 0 && _targetHoverExpansion <= 0) return;
+    if (_hoveredClipboardIndex < 0) return;
 
-    _targetHoverExpansion = 0;
-    [self startAnimationTimerIfNeeded];
+    _hoveredClipboardIndex = -1;
     [self invalidateIslandDisplay];
 }
 
 - (void)setMode:(ChiraIslandMode)mode transientDuration:(NSTimeInterval)duration {
     self.mode = mode;
-    if (mode == ChiraIslandModeIdle) {
-        _targetHoverExpansion = 0;
-    }
 
     [_collapseTimer invalidate];
     _collapseTimer = nil;
@@ -295,6 +294,27 @@ typedef struct {
 
 - (NSInteger)visibleClipboardItemLimit {
     return MAX(1, MIN(8, self.maxVisibleClipboardItems > 0 ? self.maxVisibleClipboardItems : 5));
+}
+
+- (BOOL)clipboardRowIsSessionExpandedAtIndex:(NSInteger)index {
+    return index >= 0 && [_sessionExpandedClipboardIndexes containsIndex:index];
+}
+
+- (CGFloat)clipboardExpansionRevealForIndex:(NSInteger)index {
+    if (![self clipboardRowIsSessionExpandedAtIndex:index]) return 0;
+    if (index == _expandingClipboardIndex) return ChiraSmoothStep(_hoverExpansion);
+    return 1.0;
+}
+
+- (BOOL)resetClipboardSessionExpansionIfClosed {
+    if (_progress > 0.01 || _targetProgress > 0.01) return NO;
+    if (_sessionExpandedClipboardIndexes.count == 0 && _hoveredClipboardIndex < 0 && _expandingClipboardIndex < 0) return NO;
+
+    [_sessionExpandedClipboardIndexes removeAllIndexes];
+    _hoveredClipboardIndex = -1;
+    _expandingClipboardIndex = -1;
+    _hoverExpansion = 0;
+    return YES;
 }
 
 - (CGFloat)contentTopForIslandRect:(NSRect)rect {
@@ -482,10 +502,11 @@ typedef struct {
 }
 
 - (CGFloat)clipboardRowHeightForObject:(id)object atIndex:(NSInteger)index width:(CGFloat)width {
-    if (index != _hoveredClipboardIndex) return ChiraClipboardBaseRowHeight;
+    if (![self clipboardRowIsSessionExpandedAtIndex:index]) return ChiraClipboardBaseRowHeight;
 
     CGFloat expandedHeight = [self expandedClipboardRowHeightForObject:object atIndex:index width:width];
-    return ChiraClipboardBaseRowHeight + (expandedHeight - ChiraClipboardBaseRowHeight) * _hoverExpansion;
+    CGFloat reveal = [self clipboardExpansionRevealForIndex:index];
+    return ChiraClipboardBaseRowHeight + (expandedHeight - ChiraClipboardBaseRowHeight) * reveal;
 }
 
 - (CGFloat)expandedClipboardRowHeightForObject:(id)object atIndex:(NSInteger)index width:(CGFloat)width {
@@ -509,10 +530,10 @@ typedef struct {
                                            primaryLine:(NSString **)primaryLineOut
                                       continuationLine:(NSString **)continuationLineOut {
     ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
-    BOOL hovered = _hoveredClipboardIndex == index;
+    BOOL expanded = [self clipboardRowIsSessionExpandedAtIndex:index];
     CGFloat rowHeight = [self clipboardRowHeightForObject:object atIndex:index width:contentWidth];
-    CGFloat reveal = hovered ? ChiraSmoothStep(_hoverExpansion) : 0.0;
-    BOOL expanding = hovered && rowHeight > ChiraClipboardBaseRowHeight + 0.5;
+    CGFloat reveal = [self clipboardExpansionRevealForIndex:index];
+    BOOL expanding = expanded && rowHeight > ChiraClipboardBaseRowHeight + 0.5;
     BOOL imageRevealing = expanding && item.image && self.showsImageClipboardPreviews && reveal > 0.01;
     BOOL textExpanding = expanding && !item.image && [self clipboardTextNeedsExpansion:object atIndex:index width:contentWidth];
 
@@ -673,14 +694,18 @@ typedef struct {
         needsNextFrame = YES;
     }
 
-    CGFloat hoverDelta = _targetHoverExpansion - _hoverExpansion;
-    if (fabs(hoverDelta) < 0.01) {
-        _hoverExpansion = _targetHoverExpansion;
-        if (_hoverExpansion <= 0 && _targetHoverExpansion <= 0) {
-            _hoveredClipboardIndex = -1;
+    if (_expandingClipboardIndex >= 0) {
+        CGFloat hoverDelta = 1.0 - _hoverExpansion;
+        if (fabs(hoverDelta) < 0.01) {
+            _hoverExpansion = 1.0;
+            _expandingClipboardIndex = -1;
+        } else {
+            _hoverExpansion += hoverDelta * 0.24;
+            needsNextFrame = YES;
         }
-    } else {
-        _hoverExpansion += hoverDelta * 0.24;
+    }
+
+    if ([self resetClipboardSessionExpansionIfClosed]) {
         needsNextFrame = YES;
     }
 
@@ -747,19 +772,19 @@ typedef struct {
     return 122;
 }
 
-- (CGFloat)expandedContentHeightForFullCurrentHover {
+- (CGFloat)expandedContentHeightForFullClipboardSession {
     IslandModule *module = [self displayModule];
     if (![module.identifier isEqualToString:ChiraModuleIdentifierClipboard]) return [self expandedContentHeight];
 
     NSInteger rowCount = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
     if (rowCount == 0) return 96;
-    if (_hoveredClipboardIndex < 0 || _hoveredClipboardIndex >= rowCount) return [self expandedContentHeight];
+    if (_sessionExpandedClipboardIndexes.count == 0) return [self expandedContentHeight];
 
     CGFloat contentWidth = 470 - 40 * 2;
     CGFloat rowsHeight = 0;
     for (NSInteger index = 0; index < rowCount; index++) {
         id object = module.items[index];
-        rowsHeight += (index == _hoveredClipboardIndex)
+        rowsHeight += [_sessionExpandedClipboardIndexes containsIndex:index]
             ? [self expandedClipboardRowHeightForObject:object atIndex:index width:contentWidth]
             : ChiraClipboardBaseRowHeight;
     }
@@ -773,8 +798,8 @@ typedef struct {
     if (NSPointInRect(point, islandRect)) return YES;
     if (NSPointInRect(point, [self interactiveIslandRectForVisibleRect:islandRect])) return YES;
 
-    if (self.mode == ChiraIslandModeClipboard && _hoveredClipboardIndex >= 0 && (_hoverExpansion > 0.01 || _targetHoverExpansion > 0.01)) {
-        CGFloat extraHeight = MAX(0, [self expandedContentHeightForFullCurrentHover] - [self expandedContentHeight]) * _progress;
+    if (self.mode == ChiraIslandModeClipboard && _sessionExpandedClipboardIndexes.count > 0) {
+        CGFloat extraHeight = MAX(0, [self expandedContentHeightForFullClipboardSession] - [self expandedContentHeight]) * _progress;
         if (extraHeight > 0) {
             islandRect.size.height += extraHeight;
             return NSPointInRect(point, [self interactiveIslandRectForVisibleRect:islandRect]);
@@ -977,7 +1002,7 @@ typedef struct {
 
         BOOL hovered = _hoveredClipboardIndex == index;
         BOOL pressed = _pressedClipboardInside && _pressedClipboardIndex == index;
-        BOOL activelyHovered = hovered && _targetHoverExpansion > 0.5;
+        BOOL activelyHovered = hovered;
 
         CGFloat itemTextAlpha = (pressed || activelyHovered ? 0.96 : 0.64) * contentAlpha;
         NSDictionary *itemAttributes = @{
