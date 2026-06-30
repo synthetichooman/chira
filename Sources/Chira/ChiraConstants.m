@@ -1,7 +1,5 @@
 #import "ChiraConstants.h"
 
-NSString * const ChiraModuleIdentifierClipboard = @"clipboard";
-
 NSString *ChiraDisplayTextForClipboardItem(NSString *item) {
     if (!item.length) return @"";
 

@@ -10,7 +10,6 @@
 @property (nonatomic) BOOL image;
 
 + (instancetype)textItemWithString:(NSString *)string;
-+ (instancetype)itemFromPasteboard:(NSPasteboard *)pasteboard;
 + (instancetype)itemFromPasteboard:(NSPasteboard *)pasteboard preparesPreview:(BOOL)preparesPreview;
 - (BOOL)matchesItem:(ClipboardHistoryItem *)item;
 - (void)prepareThumbnailIfNeeded;

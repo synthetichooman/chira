@@ -297,10 +297,6 @@ static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard,
     return item;
 }
 
-+ (instancetype)itemFromPasteboard:(NSPasteboard *)pasteboard {
-    return [self itemFromPasteboard:pasteboard preparesPreview:YES];
-}
-
 + (instancetype)itemFromPasteboard:(NSPasteboard *)pasteboard preparesPreview:(BOOL)preparesPreview {
     ClipboardHistoryItem *fileImageItem = ChiraImageItemFromFileURL(pasteboard, ChiraFirstPasteboardURL(pasteboard, YES), preparesPreview);
     if (fileImageItem) return fileImageItem;
@@ -343,13 +339,13 @@ static ClipboardHistoryItem *ChiraImageItemFromFileURL(NSPasteboard *pasteboard,
         ClipboardHistoryItem *item = [ClipboardHistoryItem new];
         item.dataValue = pasteboardImageData;
         item.pasteboardType = pasteboardImageType;
-        item.previewImage = pasteboardImage;
+        item.previewImage = preparesPreview ? pasteboardImage : nil;
         item.image = YES;
         item.displayText = ChiraDisplayTextForImage(pasteboard, pasteboardImageData, pasteboardImageType, pasteboardImage);
         if (preparesPreview) {
             [item prepareThumbnailIfNeeded];
         }
-        if (item.thumbnailImage) item.previewImage = nil;
+        if (item.thumbnailImage || !preparesPreview) item.previewImage = nil;
         [item recordImageDataIdentityIfNeeded];
         [item spillImageDataToDiskIfNeeded];
         return item;

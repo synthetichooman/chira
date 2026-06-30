@@ -73,9 +73,7 @@ typedef struct {
     self = [super initWithFrame:frameRect];
     if (!self) return nil;
 
-    _clipboardSummary = @"";
     _clipboardItems = @[];
-    _modules = @[];
     _topSafeInset = 6;
     _notchWidth = 0;
     _hasNotch = NO;
@@ -96,6 +94,15 @@ typedef struct {
 
 - (BOOL)isFlipped {
     return YES;
+}
+
+- (void)setClipboardItems:(NSArray<ClipboardHistoryItem *> *)clipboardItems {
+    _clipboardItems = [clipboardItems copy] ?: @[];
+    [_sessionExpandedClipboardIndexes removeAllIndexes];
+    _pressedClipboardIndex = -1;
+    _hoveredClipboardIndex = -1;
+    _expandingClipboardIndex = -1;
+    _hoverExpansion = 0;
 }
 
 - (void)updateTrackingAreas {
@@ -127,8 +134,7 @@ typedef struct {
         return;
     }
 
-    IslandModule *module = [self displayModule];
-    NSInteger index = [self clipboardItemIndexAtPoint:point forModule:module inIslandRect:islandRect];
+    NSInteger index = [self clipboardItemIndexAtPoint:point inIslandRect:islandRect];
     if (index >= 0) {
         _pressedClipboardIndex = index;
         _pressedClipboardInside = YES;
@@ -141,8 +147,7 @@ typedef struct {
 
     NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
     NSRect islandRect = [self currentIslandRect];
-    IslandModule *module = [self displayModule];
-    NSInteger index = [self clipboardItemIndexAtPoint:point forModule:module inIslandRect:islandRect];
+    NSInteger index = [self clipboardItemIndexAtPoint:point inIslandRect:islandRect];
     BOOL inside = index == _pressedClipboardIndex;
     if (_pressedClipboardInside != inside) {
         _pressedClipboardInside = inside;
@@ -156,8 +161,7 @@ typedef struct {
     NSInteger pressedIndex = _pressedClipboardIndex;
     NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
     NSRect islandRect = [self currentIslandRect];
-    IslandModule *module = [self displayModule];
-    NSInteger releaseIndex = [self clipboardItemIndexAtPoint:point forModule:module inIslandRect:islandRect];
+    NSInteger releaseIndex = [self clipboardItemIndexAtPoint:point inIslandRect:islandRect];
 
     _pressedClipboardIndex = -1;
     _pressedClipboardInside = NO;
@@ -175,8 +179,7 @@ typedef struct {
         return;
     }
 
-    IslandModule *module = [self displayModule];
-    NSInteger index = [self clipboardItemHoverIndexAtPoint:point forModule:module inIslandRect:islandRect];
+    NSInteger index = [self clipboardItemHoverIndexAtPoint:point inIslandRect:islandRect];
     if (index < 0) {
         [self clearHoveredClipboardIndex];
         return;
@@ -278,19 +281,6 @@ typedef struct {
     }
 
     _lastInvalidatedIslandRect = currentRect;
-}
-
-- (IslandModule *)displayModule {
-    IslandModule *clipboardModule = self.modules.firstObject;
-    if (clipboardModule) return clipboardModule;
-
-    return [IslandModule moduleWithIdentifier:ChiraModuleIdentifierClipboard
-                                        title:@"Clipboard"
-                                     subtitle:@"No recent items"
-                                        items:@[]
-                                  accentColor:NSColor.systemGreenColor
-                                        style:ChiraModuleStyleDefault
-                                     progress:0];
 }
 
 - (NSInteger)visibleClipboardItemLimit {
@@ -614,10 +604,9 @@ typedef struct {
 }
 
 - (void)preparePreviewForHoveredClipboardItem {
-    IslandModule *module = [self displayModule];
-    if (_hoveredClipboardIndex < 0 || _hoveredClipboardIndex >= (NSInteger)module.items.count) return;
+    if (_hoveredClipboardIndex < 0 || _hoveredClipboardIndex >= (NSInteger)self.clipboardItems.count) return;
 
-    ClipboardHistoryItem *item = [self clipboardItemFromObject:module.items[_hoveredClipboardIndex]];
+    ClipboardHistoryItem *item = [self clipboardItemFromObject:self.clipboardItems[_hoveredClipboardIndex]];
     if (!item.image) return;
     if (!self.showsImageClipboardPreviews) return;
     if (item.thumbnailImage) return;
@@ -629,8 +618,8 @@ typedef struct {
     if (item.thumbnailImage) item.previewImage = nil;
 }
 
-- (NSInteger)clipboardItemIndexAtPoint:(NSPoint)point forModule:(IslandModule *)module inIslandRect:(NSRect)rect {
-    if (![module.identifier isEqualToString:ChiraModuleIdentifierClipboard] || module.items.count == 0) {
+- (NSInteger)clipboardItemIndexAtPoint:(NSPoint)point inIslandRect:(NSRect)rect {
+    if (self.clipboardItems.count == 0) {
         return -1;
     }
 
@@ -639,10 +628,10 @@ typedef struct {
     CGFloat contentX = [self contentXForIslandRect:rect horizontalPadding:horizontalPadding];
     CGFloat contentWidth = [self contentWidthForIslandRect:rect horizontalPadding:horizontalPadding];
     NSDictionary *attributes = [self clipboardTextMetricAttributes];
-    NSInteger count = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
+    NSInteger count = MIN((NSInteger)self.clipboardItems.count, [self visibleClipboardItemLimit]);
 
     for (NSInteger index = 0; index < count; index++) {
-        ChiraClipboardRowLayout layout = [self clipboardRowLayoutForObject:module.items[index]
+        ChiraClipboardRowLayout layout = [self clipboardRowLayoutForObject:self.clipboardItems[index]
                                                                     atIndex:index
                                                                      rowTop:rowTop
                                                                    contentX:contentX
@@ -660,8 +649,8 @@ typedef struct {
     return -1;
 }
 
-- (NSInteger)clipboardItemHoverIndexAtPoint:(NSPoint)point forModule:(IslandModule *)module inIslandRect:(NSRect)rect {
-    if (![module.identifier isEqualToString:ChiraModuleIdentifierClipboard] || module.items.count == 0) {
+- (NSInteger)clipboardItemHoverIndexAtPoint:(NSPoint)point inIslandRect:(NSRect)rect {
+    if (self.clipboardItems.count == 0) {
         return -1;
     }
 
@@ -670,10 +659,10 @@ typedef struct {
     CGFloat contentX = [self contentXForIslandRect:rect horizontalPadding:horizontalPadding];
     CGFloat contentWidth = [self contentWidthForIslandRect:rect horizontalPadding:horizontalPadding];
     NSDictionary *attributes = [self clipboardTextMetricAttributes];
-    NSInteger count = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
+    NSInteger count = MIN((NSInteger)self.clipboardItems.count, [self visibleClipboardItemLimit]);
 
     for (NSInteger index = 0; index < count; index++) {
-        ChiraClipboardRowLayout layout = [self clipboardRowLayoutForObject:module.items[index]
+        ChiraClipboardRowLayout layout = [self clipboardRowLayoutForObject:self.clipboardItems[index]
                                                                     atIndex:index
                                                                      rowTop:rowTop
                                                                    contentX:contentX
@@ -769,33 +758,26 @@ typedef struct {
 }
 
 - (CGFloat)expandedContentHeight {
-    IslandModule *module = [self displayModule];
-    if ([module.identifier isEqualToString:ChiraModuleIdentifierClipboard]) {
-        NSInteger rowCount = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
-        if (rowCount == 0) return 96;
+    NSInteger rowCount = MIN((NSInteger)self.clipboardItems.count, [self visibleClipboardItemLimit]);
+    if (rowCount == 0) return 96;
 
-        CGFloat contentWidth = 470 - 40 * 2;
-        CGFloat rowsHeight = 0;
-        for (NSInteger index = 0; index < rowCount; index++) {
-            rowsHeight += [self clipboardRowHeightForObject:module.items[index] atIndex:index width:contentWidth];
-        }
-        return [self clipboardExpandedContentHeightForRowsHeight:rowsHeight];
+    CGFloat contentWidth = 470 - 40 * 2;
+    CGFloat rowsHeight = 0;
+    for (NSInteger index = 0; index < rowCount; index++) {
+        rowsHeight += [self clipboardRowHeightForObject:self.clipboardItems[index] atIndex:index width:contentWidth];
     }
-    return 122;
+    return [self clipboardExpandedContentHeightForRowsHeight:rowsHeight];
 }
 
 - (CGFloat)expandedContentHeightForFullClipboardSession {
-    IslandModule *module = [self displayModule];
-    if (![module.identifier isEqualToString:ChiraModuleIdentifierClipboard]) return [self expandedContentHeight];
-
-    NSInteger rowCount = MIN((NSInteger)module.items.count, [self visibleClipboardItemLimit]);
+    NSInteger rowCount = MIN((NSInteger)self.clipboardItems.count, [self visibleClipboardItemLimit]);
     if (rowCount == 0) return 96;
     if (_sessionExpandedClipboardIndexes.count == 0) return [self expandedContentHeight];
 
     CGFloat contentWidth = 470 - 40 * 2;
     CGFloat rowsHeight = 0;
     for (NSInteger index = 0; index < rowCount; index++) {
-        id object = module.items[index];
+        id object = self.clipboardItems[index];
         rowsHeight += [_sessionExpandedClipboardIndexes containsIndex:index]
             ? [self expandedClipboardRowHeightForObject:object atIndex:index width:contentWidth]
             : ChiraClipboardBaseRowHeight;
@@ -922,23 +904,17 @@ typedef struct {
 }
 
 - (void)drawExpandedInRect:(NSRect)rect {
-    IslandModule *module = [self displayModule];
     CGFloat contentAlpha = MIN(1, MAX(0, (_progress - 0.35) / 0.35));
-    [self drawModuleContent:module inRect:rect contentAlpha:contentAlpha horizontalPadding:40];
+    [self drawClipboardContentInRect:rect contentAlpha:contentAlpha horizontalPadding:40];
 }
 
-- (void)drawModuleContent:(IslandModule *)module
-                   inRect:(NSRect)rect
-             contentAlpha:(CGFloat)contentAlpha
-        horizontalPadding:(CGFloat)horizontalPadding {
-    NSColor *tint = module.accentColor ?: NSColor.whiteColor;
-    NSString *primary = module.title.length ? module.title : @"Chira";
-    NSString *secondary = module.subtitle.length ? module.subtitle : @"Ready";
+- (void)drawClipboardContentInRect:(NSRect)rect
+                       contentAlpha:(CGFloat)contentAlpha
+                  horizontalPadding:(CGFloat)horizontalPadding {
     CGFloat contentTop = [self contentTopForIslandRect:rect];
     CGFloat contentX = [self contentXForIslandRect:rect horizontalPadding:horizontalPadding];
     CGFloat contentWidth = [self contentWidthForIslandRect:rect horizontalPadding:horizontalPadding];
-    BOOL isClipboardModule = [module.identifier isEqualToString:ChiraModuleIdentifierClipboard];
-    NSRect titleRect = [self headerTitleRectInIslandRect:rect horizontalPadding:horizontalPadding reservesSettings:isClipboardModule];
+    NSRect titleRect = [self headerTitleRectInIslandRect:rect horizontalPadding:horizontalPadding reservesSettings:YES];
 
     NSDictionary *primaryAttributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold],
@@ -949,46 +925,32 @@ typedef struct {
         NSForegroundColorAttributeName: [NSColor colorWithWhite:1 alpha:0.62 * contentAlpha]
     };
 
-    [primary drawWithRect:titleRect
-                  options:NSStringDrawingTruncatesLastVisibleLine
-               attributes:primaryAttributes];
+    [@"Clipboard" drawWithRect:titleRect
+                       options:NSStringDrawingTruncatesLastVisibleLine
+                    attributes:primaryAttributes];
 
-    if (isClipboardModule) {
-        NSRect settingsRect = [self settingsButtonRectInIslandRect:rect];
-        NSImage *gear = [self settingsGearImage];
-        NSRect imageRect = NSInsetRect(settingsRect, 4, 4);
-        if (gear) {
-            [gear drawInRect:imageRect
-                    fromRect:NSZeroRect
-                   operation:NSCompositingOperationSourceOver
-                    fraction:contentAlpha
-              respectFlipped:NO
-                       hints:nil];
-        }
+    NSRect settingsRect = [self settingsButtonRectInIslandRect:rect];
+    NSImage *gear = [self settingsGearImage];
+    NSRect imageRect = NSInsetRect(settingsRect, 4, 4);
+    if (gear) {
+        [gear drawInRect:imageRect
+                fromRect:NSZeroRect
+               operation:NSCompositingOperationSourceOver
+                fraction:contentAlpha
+          respectFlipped:NO
+                   hints:nil];
     }
 
-    if (module.style == ChiraModuleStyleProgress) {
-        NSRect barRect = NSMakeRect(contentX, contentTop + 33, contentWidth, 8);
-        [[NSColor colorWithWhite:1 alpha:0.14] setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:barRect xRadius:4 yRadius:4] fill];
-
-        NSRect fillRect = barRect;
-        fillRect.size.width = MAX(8, NSWidth(barRect) * module.progress);
-        [tint setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:fillRect xRadius:4 yRadius:4] fill];
-        return;
-    }
-
-    if (module.style == ChiraModuleStyleList && module.items.count > 0) {
-        [self drawClipboardItems:module.items
+    if (self.clipboardItems.count > 0) {
+        [self drawClipboardItems:self.clipboardItems
                          inRect:NSMakeRect(contentX, [self clipboardListTopForIslandRect:rect horizontalPadding:horizontalPadding], contentWidth, NSHeight(rect) - contentTop - 52)
                     contentAlpha:contentAlpha];
         return;
     }
 
-    [secondary drawWithRect:NSMakeRect(contentX, contentTop + 29, contentWidth, 18)
-                    options:NSStringDrawingTruncatesLastVisibleLine
-                 attributes:secondaryAttributes];
+    [@"No recent items" drawWithRect:NSMakeRect(contentX, contentTop + 29, contentWidth, 18)
+                             options:NSStringDrawingTruncatesLastVisibleLine
+                          attributes:secondaryAttributes];
 }
 
 - (void)drawClipboardItems:(NSArray *)items inRect:(NSRect)rect contentAlpha:(CGFloat)contentAlpha {

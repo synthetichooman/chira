@@ -4,6 +4,9 @@
 
 static const NSTimeInterval ChiraClipboardIngestDelay = 0.42;
 static const NSTimeInterval ChiraClipboardPollingPause = 0.48;
+static const NSTimeInterval ChiraClipboardPollingInterval = 0.50;
+static const NSTimeInterval ChiraPointerPollingActiveInterval = 1.0 / 30.0;
+static const NSTimeInterval ChiraPointerPollingIdleInterval = 0.12;
 static NSString * const ChiraMaxVisibleClipboardItemsKey = @"maxVisibleClipboardItems";
 static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard";
 
@@ -18,11 +21,14 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     NSTextField *_settingsCountValueLabel;
     NSStepper *_settingsCountStepper;
     NSButton *_settingsImagePreviewCheckbox;
+    dispatch_queue_t _clipboardIngestQueue;
     NSTimeInterval _clipboardPollingResumeTime;
     NSInteger _lastClipboardChangeCount;
     NSMutableArray<ClipboardHistoryItem *> *_clipboardHistory;
     NSRect _notchHotZone;
     BOOL _panelIgnoringMouseEvents;
+    BOOL _pointerTimerActive;
+    BOOL _loadingInitialClipboardItem;
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
@@ -35,18 +41,15 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     [self cleanupTemporaryClipboardItems];
 
     _clipboardHistory = [NSMutableArray array];
+    _clipboardIngestQueue = dispatch_queue_create("local.codex.Chira.clipboard-ingest", DISPATCH_QUEUE_SERIAL);
     [self setupPanel];
     [self setupStatusItem];
 
     _lastClipboardChangeCount = NSPasteboard.generalPasteboard.changeCount;
-    [self syncModules];
+    [self syncClipboardItems];
 
-    _pointerTimer = [NSTimer scheduledTimerWithTimeInterval:1.0 / 30.0
-                                                     target:self
-                                                   selector:@selector(pointerTimerTick)
-                                                   userInfo:nil
-                                                    repeats:YES];
-    _clipboardTimer = [NSTimer scheduledTimerWithTimeInterval:0.2
+    [self schedulePointerTimerActive:NO];
+    _clipboardTimer = [NSTimer scheduledTimerWithTimeInterval:ChiraClipboardPollingInterval
                                                        target:self
                                                      selector:@selector(clipboardTimerTick)
                                                      userInfo:nil
@@ -111,6 +114,19 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     [menu addItem:NSMenuItem.separatorItem];
     [menu addItem:[[NSMenuItem alloc] initWithTitle:@"Quit" action:@selector(quit) keyEquivalent:@"q"]];
     _statusItem.menu = menu;
+}
+
+- (void)schedulePointerTimerActive:(BOOL)active {
+    if (_pointerTimer && _pointerTimerActive == active) return;
+
+    [_pointerTimer invalidate];
+    _pointerTimerActive = active;
+    NSTimeInterval interval = active ? ChiraPointerPollingActiveInterval : ChiraPointerPollingIdleInterval;
+    _pointerTimer = [NSTimer scheduledTimerWithTimeInterval:interval
+                                                     target:self
+                                                   selector:@selector(pointerTimerTick)
+                                                   userInfo:nil
+                                                    repeats:YES];
 }
 
 - (void)showIsland {
@@ -290,17 +306,37 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
             return screen;
         }
     }
-    return NSScreen.mainScreen;
+    return nil;
+}
+
+- (BOOL)screenHasNotchDeadZone:(NSScreen *)screen {
+    return screen && !NSIsEmptyRect(screen.auxiliaryTopLeftArea) && !NSIsEmptyRect(screen.auxiliaryTopRightArea);
+}
+
+- (NSScreen *)screenContainingPoint:(NSPoint)point {
+    for (NSScreen *screen in NSScreen.screens) {
+        if (NSPointInRect(point, screen.frame)) return screen;
+    }
+    return nil;
+}
+
+- (NSScreen *)targetScreen {
+    NSScreen *builtIn = [self builtInScreen];
+    if ([self screenHasNotchDeadZone:builtIn]) return builtIn;
+
+    NSScreen *mouseScreen = [self screenContainingPoint:NSEvent.mouseLocation];
+    return mouseScreen ?: NSScreen.mainScreen ?: NSScreen.screens.firstObject;
 }
 
 - (void)recenterIsland {
-    NSScreen *screen = [self builtInScreen];
+    NSScreen *screen = [self targetScreen];
+    if (!screen) return;
 
     NSSize size = _panel.frame.size;
     NSEdgeInsets safeInsets = screen.safeAreaInsets;
     NSRect topLeftArea = screen.auxiliaryTopLeftArea;
     NSRect topRightArea = screen.auxiliaryTopRightArea;
-    BOOL hasNotchDeadZone = !NSIsEmptyRect(topLeftArea) && !NSIsEmptyRect(topRightArea);
+    BOOL hasNotchDeadZone = [self screenHasNotchDeadZone:screen];
 
     CGFloat anchorX = NSMidX(screen.frame);
     CGFloat notchWidth = 0;
@@ -357,28 +393,22 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
 - (void)ingestClipboardAfterPulse {
     _clipboardIngestTimer = nil;
 
-    ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:NSPasteboard.generalPasteboard
-                                                          preparesPreview:[self showsImageClipboardPreviews]];
-    if (!item) return;
+    NSInteger expectedChangeCount = _lastClipboardChangeCount;
+    BOOL preparesPreview = [self showsImageClipboardPreviews];
+    dispatch_async(_clipboardIngestQueue, ^{
+        ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:NSPasteboard.generalPasteboard
+                                                              preparesPreview:preparesPreview];
+        if (!item) return;
 
-    [self addClipboardHistoryItem:item];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (expectedChangeCount != self->_lastClipboardChangeCount) return;
+            [self addClipboardHistoryItem:item];
+        });
+    });
 }
 
-- (void)syncModules {
-    NSUInteger count = _clipboardHistory.count;
-    NSString *subtitle = count == 0
-        ? @"No recent items"
-        : [NSString stringWithFormat:@"%lu recent item%@", (unsigned long)count, count == 1 ? @"" : @"s"];
-
-    IslandModule *clipboardModule = [IslandModule moduleWithIdentifier:ChiraModuleIdentifierClipboard
-                                                                  title:@"Clipboard"
-                                                               subtitle:subtitle
-                                                                  items:[_clipboardHistory copy]
-                                                            accentColor:NSColor.systemGreenColor
-                                                                  style:(count > 0 ? ChiraModuleStyleList : ChiraModuleStyleDefault)
-                                                               progress:0];
-
-    _islandView.modules = @[clipboardModule];
+- (void)syncClipboardItems {
+    _islandView.clipboardItems = [_clipboardHistory copy];
     [_islandView setNeedsDisplay:YES];
 }
 
@@ -411,6 +441,9 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     } else if (!overIsland && _islandView.mode == ChiraIslandModeClipboard) {
         [_islandView setMode:ChiraIslandModeIdle transientDuration:0];
     }
+
+    BOOL needsActivePointerPolling = inHotZone || overIsland || _islandView.mode != ChiraIslandModeIdle;
+    [self schedulePointerTimerActive:needsActivePointerPolling];
 }
 
 - (NSString *)capturesDirectoryPath {
@@ -425,15 +458,30 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
 }
 
 - (void)showRememberedIslandMode {
-    if (_clipboardHistory.count == 0) {
-        ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:NSPasteboard.generalPasteboard
-                                                              preparesPreview:[self showsImageClipboardPreviews]];
-        if (item) {
-            [self addClipboardHistoryItem:item];
-        }
+    if (_clipboardHistory.count == 0 && !_loadingInitialClipboardItem) {
+        _loadingInitialClipboardItem = YES;
+        NSInteger expectedChangeCount = _lastClipboardChangeCount;
+        BOOL preparesPreview = [self showsImageClipboardPreviews];
+        dispatch_async(_clipboardIngestQueue, ^{
+            ClipboardHistoryItem *item = [ClipboardHistoryItem itemFromPasteboard:NSPasteboard.generalPasteboard
+                                                                  preparesPreview:preparesPreview];
+            if (!item) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    self->_loadingInitialClipboardItem = NO;
+                });
+                return;
+            }
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self->_loadingInitialClipboardItem = NO;
+                if (self->_clipboardHistory.count > 0) return;
+                if (expectedChangeCount != self->_lastClipboardChangeCount) return;
+                [self addClipboardHistoryItem:item];
+            });
+        });
     }
 
-    [self syncModules];
+    [self syncClipboardItems];
     [_islandView setMode:ChiraIslandModeClipboard transientDuration:0];
 }
 
@@ -451,8 +499,7 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
         [_clipboardHistory removeLastObject];
     }
 
-    _islandView.clipboardSummary = item.displayText ?: @"Clipboard updated";
-    [self syncModules];
+    [self syncClipboardItems];
 }
 
 - (void)saveClipboardText {
@@ -483,8 +530,6 @@ static NSString * const ChiraPreviewImageClipboardKey = @"previewImageClipboard"
     ClipboardHistoryItem *item = _clipboardHistory[index];
     [item writeToPasteboard:pasteboard];
     _lastClipboardChangeCount = pasteboard.changeCount;
-    _islandView.clipboardSummary = item.image ? @"Copied image" : @"Copied item";
-
     [_panel orderFrontRegardless];
     [_islandView setMode:ChiraIslandModeClipboard transientDuration:1.8];
 }
