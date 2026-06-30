@@ -1,6 +1,6 @@
 # Chira
 
-Chira is a lightweight native macOS clipboard history overlay that lives around the top-center notch area.
+Chira is a lightweight macOS clipboard history overlay that lives around the top-center notch area.
 
 Version: `0.1`
 
@@ -12,10 +12,9 @@ Build and open Chira:
 Scripts/run-app.sh
 ```
 
-Or build the app and open it yourself:
+open it yourself:
 
 ```sh
-Scripts/build-app.sh
 open .build/Chira.app
 ```
 
