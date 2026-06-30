@@ -15,6 +15,8 @@ static const CGFloat ChiraHeaderButtonSize = 24.0;
 static const CGFloat ChiraHeaderIconTextBaselineOffset = -13.0;
 static const CGFloat ChiraClipboardRowTextHeight = 18.0;
 static const CGFloat ChiraClipboardHoverTextBaselineOffset = -13.0;
+static const CGFloat ChiraClipboardTitleListGap = 12.0;
+static const CGFloat ChiraClipboardExpandedBaseHeight = 69.0;
 static const NSTimeInterval ChiraIngestPulseDuration = 0.34;
 
 static CGFloat ChiraSmoothStep(CGFloat value) {
@@ -300,7 +302,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
 
 - (CGFloat)clipboardListTopForIslandRect:(NSRect)rect horizontalPadding:(CGFloat)horizontalPadding {
     NSRect titleRect = [self headerTitleRectInIslandRect:rect horizontalPadding:horizontalPadding reservesSettings:YES];
-    return NSMaxY(titleRect) + 21;
+    return NSMaxY(titleRect) + ChiraClipboardTitleListGap;
 }
 
 - (NSRect)settingsButtonRectInIslandRect:(NSRect)rect {
@@ -547,7 +549,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         for (NSInteger index = 0; index < rowCount; index++) {
             rowsHeight += [self clipboardRowHeightForObject:module.items[index] atIndex:index width:contentWidth];
         }
-        return 78 + rowsHeight;
+        return ChiraClipboardExpandedBaseHeight + rowsHeight;
     }
     return 122;
 }
@@ -568,7 +570,7 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
             ? [self expandedClipboardRowHeightForObject:object atIndex:index width:contentWidth]
             : ChiraClipboardBaseRowHeight;
     }
-    return 78 + rowsHeight;
+    return ChiraClipboardExpandedBaseHeight + rowsHeight;
 }
 
 - (BOOL)containsInteractivePoint:(NSPoint)point {
@@ -755,10 +757,13 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         id object = items[index];
         ClipboardHistoryItem *item = [self clipboardItemFromObject:object];
         BOOL hovered = _hoveredClipboardIndex == index;
-        BOOL expanded = hovered && _hoverExpansion > 0.45;
+        BOOL imageExpanded = hovered && item.image && _hoverExpansion > 0.05;
+        BOOL textExpanded = hovered && !item.image && _hoverExpansion > 0.45;
         BOOL pressed = _pressedClipboardInside && _pressedClipboardIndex == index;
         CGFloat rowHeight = [self clipboardRowHeightForObject:object atIndex:index width:NSWidth(rect)];
         NSRect rowRect = NSMakeRect(NSMinX(rect), rowTop, NSWidth(rect), rowHeight);
+        NSRect baseRowRect = rowRect;
+        baseRowRect.size.height = ChiraClipboardBaseRowHeight;
 
         if (hovered) {
             NSRect highlightRect;
@@ -779,10 +784,11 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
         };
         NSString *line = [self displayLineForClipboardObject:object atIndex:index];
 
-        if (expanded && item.image) {
-            CGFloat thumbnailSize = 58;
+        if (imageExpanded) {
+            CGFloat previewProgress = ChiraSmoothStep((_hoverExpansion - 0.05) / 0.95);
+            CGFloat thumbnailSize = 24 + (58 - 24) * previewProgress;
             NSRect thumbnailRect = NSMakeRect(NSMinX(rowRect),
-                                              floor(NSMidY(rowRect) - thumbnailSize / 2.0),
+                                              floor(NSMinY(rowRect) + 6),
                                               thumbnailSize,
                                               thumbnailSize);
             [[NSColor colorWithWhite:1 alpha:0.10 * contentAlpha] setFill];
@@ -804,13 +810,13 @@ static CGFloat ChiraIngestPulseValue(CGFloat t) {
                                          hints:nil];
             }
 
-            NSRect imageLabelRect = [self singleLineTextRectForRowRect:rowRect];
+            NSRect imageLabelRect = [self singleLineTextRectForRowRect:baseRowRect];
             imageLabelRect.origin.x = NSMaxX(thumbnailRect) + 14;
             imageLabelRect.size.width = NSWidth(rowRect) - thumbnailSize - 14;
             [line drawWithRect:imageLabelRect
                        options:NSStringDrawingTruncatesLastVisibleLine
                     attributes:itemAttributes];
-        } else if (expanded && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
+        } else if (textExpanded && [self clipboardTextNeedsExpansion:object atIndex:index width:NSWidth(rect)]) {
             NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
             paragraph.lineBreakMode = NSLineBreakByCharWrapping;
             paragraph.lineSpacing = 1.5;
